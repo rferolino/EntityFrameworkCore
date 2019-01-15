@@ -96,6 +96,7 @@ namespace Microsoft.EntityFrameworkCore.Query
         ///     Gets the concurrency detector.
         /// </summary>
         public IConcurrencyDetector ConcurrencyDetector { get; }
+        public IDiagnosticsLogger<DbLoggerCategory.Database.Command> CommandLogger { get; }
 
         /// <summary>
         ///     The command logger.

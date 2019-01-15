@@ -10,6 +10,7 @@ using Microsoft.EntityFrameworkCore.ChangeTracking.Internal;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Internal;
+using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.EntityFrameworkCore.Query.Internal;
 using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.EntityFrameworkCore.Utilities;
@@ -85,6 +86,8 @@ namespace Microsoft.EntityFrameworkCore.Query
         /// </value>
         public virtual IConcurrencyDetector ConcurrencyDetector
             => Dependencies.ConcurrencyDetector;
+
+        public virtual IDiagnosticsLogger<DbLoggerCategory.Database.Command> CommandLogger => Dependencies.CommandLogger;
 
         /// <summary>
         ///     Gets or sets the cancellation token.
@@ -182,6 +185,13 @@ namespace Microsoft.EntityFrameworkCore.Query
             {
                 entityTrackingInfo.StartTracking(StateManager, entity, ValueBuffer.Empty);
             }
+        }
+
+        public virtual void StartTracking(
+            IEntityType entityType,
+            object entity)
+        {
+            StateManager.StartTrackingFromQuery(entityType, entity, ValueBuffer.Empty, handledForeignKeys: null);
         }
 
         /// <summary>
