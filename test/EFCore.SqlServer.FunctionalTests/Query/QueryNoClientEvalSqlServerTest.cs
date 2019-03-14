@@ -9,5 +9,9 @@ namespace Microsoft.EntityFrameworkCore.Query
             : base(fixture)
         {
         }
+        public override void Throws_when_select_many()
+        {
+            base.Throws_when_select_many();
+        }
     }
 }

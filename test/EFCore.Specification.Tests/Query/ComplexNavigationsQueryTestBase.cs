@@ -150,6 +150,7 @@ namespace Microsoft.EntityFrameworkCore.Query
         [MemberData(nameof(IsAsyncData))]
         public virtual Task Key_equality_navigation_converted_to_FK(bool isAsync)
         {
+            // TODO: remove this? it is testing optimization that is no longer there
             return AssertQuery<Level2>(
                 isAsync,
                 l2s => l2s.Where(
@@ -1858,6 +1859,28 @@ namespace Microsoft.EntityFrameworkCore.Query
                 l1s => l1s,
                 actualSelector: e => (int?)e.OneToOne_Optional_FK1.Level1_Required_Id,
                 expectedSelector: e => MaybeScalar<int>(e.OneToOne_Optional_FK1, () => e.OneToOne_Optional_FK1.Level1_Required_Id));
+        }
+
+        [ConditionalTheory]
+        [MemberData(nameof(IsAsyncData))]
+        public virtual Task Result_operator_nav_prop_reference_optional_Average_with_identity_selector(bool isAsync)
+        {
+            return AssertAverage<Level1, int?>(
+                isAsync,
+                l1s => l1s.Select(e => (int?)e.OneToOne_Optional_FK1.Level1_Required_Id),
+                l1s => l1s.Select(e => MaybeScalar<int>(e.OneToOne_Optional_FK1, () => e.OneToOne_Optional_FK1.Level1_Required_Id)),
+                actualSelector: e => e,
+                expectedSelector: e => e);
+        }
+
+        [ConditionalTheory]
+        [MemberData(nameof(IsAsyncData))]
+        public virtual Task Result_operator_nav_prop_reference_optional_Average_without_selector(bool isAsync)
+        {
+            return AssertAverage<Level1>(
+                isAsync,
+                l1s => l1s.Select(e => (int?)e.OneToOne_Optional_FK1.Level1_Required_Id),
+                l1s => l1s.Select(e => MaybeScalar<int>(e.OneToOne_Optional_FK1, () => e.OneToOne_Optional_FK1.Level1_Required_Id)));
         }
 
         [ConditionalTheory]
@@ -5533,6 +5556,8 @@ namespace Microsoft.EntityFrameworkCore.Query
         [MemberData(nameof(IsAsyncData))]
         public virtual Task Multiple_SelectMany_navigation_property_followed_by_select_collection_navigation(bool isAsync)
         {
+            isAsync = false;
+
             return AssertQuery<Level1>(
                 isAsync,
                 l1s => l1s.SelectMany(l1 => l1.OneToMany_Optional1).SelectMany(l2 => l2.OneToMany_Optional2)
@@ -5557,6 +5582,437 @@ namespace Microsoft.EntityFrameworkCore.Query
 
                 Assert.True(result.All(r => r.l2.OneToMany_Required2 != null));
                 Assert.True(result.Any(r => r.OneToMany_Optional2.Count > 0));
+            }
+        }
+
+        [ConditionalFact]
+        public virtual void Include1()
+        {
+            using (var ctx = CreateContext())
+            {
+                var query = ctx.LevelOne.Include(l1 => l1.OneToOne_Optional_FK1);
+                var result = query.ToList();
+            }
+        }
+
+        [ConditionalFact]
+        public virtual void Include2()
+        {
+            using (var ctx = CreateContext())
+            {
+                var query = ctx.LevelOne.Include(l1 => l1.OneToOne_Optional_FK1).Include(l1 => l1.OneToOne_Optional_FK1);
+                var result = query.ToList();
+            }
+        }
+
+        [ConditionalFact]
+        public virtual void Include3()
+        {
+            using (var ctx = CreateContext())
+            {
+                var query = ctx.LevelOne.Include(l1 => l1.OneToOne_Optional_FK1).Include(l1 => l1.OneToOne_Optional_PK1);
+                var result = query.ToList();
+            }
+        }
+
+        [ConditionalFact]
+        public virtual void Include4()
+        {
+            using (var ctx = CreateContext())
+            {
+                var query = ctx.LevelOne.Include(l1 => l1.OneToOne_Optional_FK1).ThenInclude(l1 => l1.OneToOne_Optional_PK2);
+                var result = query.ToList();
+            }
+        }
+
+        [ConditionalFact]
+        public virtual void Include5()
+        {
+            using (var ctx = CreateContext())
+            {
+                var query = ctx.LevelOne.Include(l1 => l1.OneToOne_Optional_FK1.OneToOne_Optional_PK2);
+                var result = query.ToList();
+            }
+        }
+
+        [ConditionalFact]
+        public virtual void Include6()
+        {
+            using (var ctx = CreateContext())
+            {
+                var query = ctx.LevelOne.Include(l1 => l1.OneToOne_Optional_FK1.OneToOne_Optional_PK2).Select(l1 => l1.OneToOne_Optional_FK1);
+                var result = query.ToList();
+            }
+        }
+
+        [ConditionalFact]
+        public virtual void Include7()
+        {
+            using (var ctx = CreateContext())
+            {
+                var query = ctx.LevelOne.Include(l1 => l1.OneToOne_Optional_FK1.OneToOne_Optional_PK2).Select(l1 => l1.OneToOne_Optional_PK1);
+                var result = query.ToList();
+            }
+        }
+
+
+        [ConditionalFact]
+        public virtual void Include8()
+        {
+            using (var ctx = CreateContext())
+            {
+                var query = ctx.LevelTwo.Where(l2 => l2.OneToOne_Optional_FK_Inverse2.Name != "Fubar").Include(l2 => l2.OneToOne_Optional_FK_Inverse2);
+                var result = query.ToList();
+            }
+        }
+
+        [ConditionalFact]
+        public virtual void Include9()
+        {
+            using (var ctx = CreateContext())
+            {
+                var query = ctx.LevelTwo.Include(l2 => l2.OneToOne_Optional_FK_Inverse2).Where(l2 => l2.OneToOne_Optional_FK_Inverse2.Name != "Fubar");
+                var result = query.ToList();
+            }
+        }
+
+        [ConditionalFact]
+        public virtual void Include10()
+        {
+            using (var ctx = CreateContext())
+            {
+                var query = ctx.LevelOne
+                    .Include(l1 => l1.OneToOne_Optional_FK1.OneToOne_Optional_PK2)
+                    .Include(l1 => l1.OneToOne_Optional_PK1.OneToOne_Optional_FK2.OneToOne_Optional_PK3);
+
+                var result = query.ToList();
+            }
+        }
+
+        [ConditionalFact]
+        public virtual void Include11()
+        {
+            using (var ctx = CreateContext())
+            {
+                var query = ctx.LevelOne
+                    .Include(l1 => l1.OneToOne_Optional_FK1.OneToOne_Optional_FK2)
+                    .Include(l1 => l1.OneToOne_Optional_FK1.OneToOne_Optional_PK2)
+                    .Include(l1 => l1.OneToOne_Optional_PK1.OneToOne_Optional_FK2.OneToOne_Optional_FK3)
+                    .Include(l1 => l1.OneToOne_Optional_PK1.OneToOne_Optional_FK2.OneToOne_Optional_PK3)
+                    .Include(l1 => l1.OneToOne_Optional_PK1.OneToOne_Optional_PK2);
+
+                var result = query.ToList();
+            }
+        }
+
+        [ConditionalFact]
+        public virtual void Include12()
+        {
+            using (var ctx = CreateContext())
+            {
+                var query = ctx.LevelOne
+                    .Include(l1 => l1.OneToOne_Optional_FK1.OneToOne_Optional_FK2)
+                    .Select(l1 => l1.OneToOne_Optional_FK1);
+
+                var result = query.ToList();
+            }
+        }
+
+        [ConditionalFact]
+        public virtual void Include13()
+        {
+            using (var ctx = CreateContext())
+            {
+                var query = ctx.LevelOne
+                    .Include(l1 => l1.OneToOne_Optional_FK1)
+                    .Select(l1 => new { one = l1, two = l1 });
+
+                var result = query.ToList();
+            }
+        }
+
+        [ConditionalFact]
+        public virtual void Include14()
+        {
+            using (var ctx = CreateContext())
+            {
+                var query = ctx.LevelOne
+                    .Include(l1 => l1.OneToOne_Optional_FK1).ThenInclude(l2 => l2.OneToOne_Optional_FK2)
+                    .Select(l1 => new { one = l1, two = l1.OneToOne_Optional_FK1, three = l1.OneToOne_Optional_PK1 });
+
+                var result = query.ToList();
+            }
+        }
+
+        [ConditionalFact(Skip = "issue #15064")]
+        public virtual void Include15()
+        {
+            using (var ctx = CreateContext())
+            {
+                var query = ctx.LevelOne.Select(l1 => new { foo = l1.OneToOne_Optional_FK1, bar = l1.OneToOne_Optional_PK1 }).Include(x => x.foo.OneToOne_Optional_FK2).Include(x => x.bar.OneToMany_Optional2);
+
+                var result = query.ToList();
+            }
+        }
+
+        [ConditionalFact(Skip = "issue #15064")]
+        public virtual void Include16()
+        {
+            using (var ctx = CreateContext())
+            {
+                var query = ctx.LevelOne.Select(l1 => new { foo = l1.OneToOne_Optional_FK1, bar = l1.OneToOne_Optional_PK1 }).Distinct().Include(x => x.foo.OneToOne_Optional_FK2).Include(x => x.bar.OneToMany_Optional2);
+
+                var result = query.ToList();
+            }
+        }
+
+        [ConditionalFact(Skip = "issue #15041")]
+        public virtual void Include17()
+        {
+            using (var ctx = CreateContext())
+            {
+                var query = ctx.LevelOne.Select(l1 => new { foo = l1.OneToOne_Optional_FK1, bar = l1.OneToOne_Optional_PK1 }).Include(x => x.foo.OneToOne_Optional_FK2).Distinct();
+
+                var result = query.ToList();
+            }
+        }
+
+        [ConditionalFact]
+        public virtual void Include18_1()
+        {
+            using (var ctx = CreateContext())
+            {
+                var query = ctx.LevelOne.Include(x => x.OneToOne_Optional_FK1).Distinct();
+
+                var result = query.ToList();
+            }
+        }
+
+        [ConditionalFact]
+        public virtual void Include18_1_1()
+        {
+            using (var ctx = CreateContext())
+            {
+                var query = ctx.LevelOne.OrderBy(x => x.OneToOne_Required_FK1.Name).Include(x => x.OneToOne_Optional_FK1).Take(10);
+
+                var result = query.ToList();
+            }
+        }
+
+        [ConditionalFact]
+        public virtual void Include18_2()
+        {
+            using (var ctx = CreateContext())
+            {
+                var query = ctx.LevelOne.Where(x => x.OneToOne_Required_FK1.Name != "Foo").Include(x => x.OneToOne_Optional_FK1).Distinct();
+
+                var result = query.ToList();
+            }
+        }
+
+        [ConditionalFact(Skip = "issue #15041")]
+        public virtual void Include18_3()
+        {
+            using (var ctx = CreateContext())
+            {
+                var query = ctx.LevelOne.OrderBy(x => x.OneToOne_Required_FK1.Name).Include(x => x.OneToOne_Optional_FK1).Select(l1 => new { foo = l1, bar = l1 }).Take(10);
+
+                var result = query.ToList();
+            }
+        }
+
+        [ConditionalFact(Skip = "issue #15041")]
+        public virtual void Include18_3_1()
+        {
+            using (var ctx = CreateContext())
+            {
+                var query = ctx.LevelOne.OrderBy(x => x.OneToOne_Required_FK1.Name).Include(x => x.OneToOne_Optional_FK1).Select(l1 => new { foo = l1, bar = l1 }).Take(10).Select(x => new { x.foo, x.bar });
+
+                var result = query.ToList();
+            }
+        }
+
+        [ConditionalFact(Skip = "issue #15041")]
+        public virtual void Include18_3_2()
+        {
+            using (var ctx = CreateContext())
+            {
+                var query = ctx.LevelOne.OrderBy(x => x.OneToOne_Required_FK1.Name).Include(x => x.OneToOne_Optional_FK1).Select(l1 => new { outer_foo = new { inner_foo = l1, inner_bar = l1.Name }, outer_bar = l1 }).Take(10);
+
+                var result = query.ToList();
+            }
+        }
+
+        [ConditionalFact]
+        public virtual void Include18_3_3()
+        {
+            using (var ctx = CreateContext())
+            {
+                var query = ctx.LevelOne.Include(x => x.OneToOne_Optional_FK1.OneToOne_Optional_FK2).Select(l1 => l1.OneToOne_Optional_FK1).Distinct();
+
+                var result = query.ToList();
+            }
+        }
+
+        [ConditionalFact(Skip = "issue #15041")]
+        public virtual void Include18_4()
+        {
+            using (var ctx = CreateContext())
+            {
+                var query = ctx.LevelOne.Include(x => x.OneToOne_Optional_FK1).Select(l1 => new { foo = l1, bar = l1 }).Distinct();
+
+                var result = query.ToList();
+            }
+        }
+
+        [ConditionalFact(Skip = "issue #15041")]
+        public virtual void Include18()
+        {
+            using (var ctx = CreateContext())
+            {
+                var query = ctx.LevelOne.Include(x => x.OneToOne_Optional_FK1).Select(l1 => new { foo = l1, bar = l1.OneToOne_Optional_PK1 }).OrderBy(x => x.foo.Id).Take(10);
+
+                var result = query.ToList();
+            }
+        }
+
+        [ConditionalFact(Skip = "issue #15041")]
+        public virtual void Include19()
+        {
+            using (var ctx = CreateContext())
+            {
+                var query = ctx.LevelOne.Include(x => x.OneToOne_Optional_FK1).Select(l1 => new { foo = l1.OneToOne_Optional_FK1, bar = l1.OneToOne_Optional_PK1 }).Distinct();
+
+                var result = query.ToList();
+            }
+        }
+
+        [ConditionalFact(Skip = "issue #15064")]
+        public virtual void IncludeCollection1()
+        {
+            using (var ctx = CreateContext())
+            {
+                var query = ctx.LevelOne.Include(l1 => l1.OneToMany_Optional1);
+                var result = query.ToList();
+            }
+        }
+
+        [ConditionalFact(Skip = "issue #15064")]
+        public virtual void IncludeCollection2()
+        {
+            using (var ctx = CreateContext())
+            {
+                var query = ctx.LevelOne.Include(l1 => l1.OneToMany_Optional1).ThenInclude(l2 => l2.OneToOne_Optional_PK2);
+                var result = query.ToList();
+            }
+        }
+
+        [ConditionalFact(Skip = "issue #15064")]
+        public virtual void IncludeCollection3()
+        {
+            using (var ctx = CreateContext())
+            {
+                var query = ctx.LevelOne.Include(l1 => l1.OneToOne_Optional_FK1).ThenInclude(l2 => l2.OneToMany_Optional2);
+                var result = query.ToList();
+            }
+        }
+
+        [ConditionalFact(Skip = "issue #15064")]
+        public virtual void IncludeCollection4()
+        {
+            using (var ctx = CreateContext())
+            {
+                var query = ctx.LevelOne.Include(l1 => l1.OneToMany_Optional1).Select(l1 => l1.OneToMany_Optional1);
+                var result = query.ToList();
+            }
+        }
+
+        [ConditionalFact(Skip = "issue #15064")]
+        public virtual void IncludeCollection5()
+        {
+            using (var ctx = CreateContext())
+            {
+                var query = ctx.LevelOne.Include(l1 => l1.OneToMany_Optional1).ThenInclude(l2 => l2.OneToOne_Optional_PK2).Select(l1 => l1.OneToMany_Optional1);
+                var result = query.ToList();
+            }
+        }
+
+        [ConditionalFact(Skip = "issue #15064")]
+        public virtual void IncludeCollection6()
+        {
+            using (var ctx = CreateContext())
+            {
+                var query = ctx.LevelOne.Include(l1 => l1.OneToMany_Optional1).ThenInclude(l2 => l2.OneToOne_Optional_PK2).ThenInclude(l3 => l3.OneToOne_Optional_FK3)
+                    .Select(l1 => l1.OneToMany_Optional1);
+                var result = query.ToList();
+            }
+        }
+
+        [ConditionalFact(Skip = "issue #15064")]
+        public virtual void IncludeCollection6_1()
+        {
+            using (var ctx = CreateContext())
+            {
+                var query = ctx.LevelOne.Include(l1 => l1.OneToMany_Optional1).ThenInclude(l2 => l2.OneToOne_Optional_PK2).ThenInclude(l3 => l3.OneToOne_Optional_FK3);
+                var result = query.ToList();
+            }
+        }
+
+        [ConditionalFact(Skip = "issue #15064")]
+        public virtual void IncludeCollection6_2()
+        {
+            using (var ctx = CreateContext())
+            {
+                var query = ctx.LevelOne.Include(l1 => l1.OneToMany_Optional1).ThenInclude(l2 => l2.OneToOne_Optional_PK2).ThenInclude(l3 => l3.OneToOne_Optional_FK3)
+                    .Include(l1 => l1.OneToMany_Optional1).ThenInclude(l2 => l2.OneToOne_Optional_FK2).ThenInclude(l3 => l3.OneToMany_Optional3)
+                    .Select(l1 => l1.OneToMany_Optional1);
+                var result = query.ToList();
+            }
+        }
+
+        [ConditionalFact(Skip = "issue #15064")]
+        public virtual void IncludeCollection6_3()
+        {
+            using (var ctx = CreateContext())
+            {
+                var query = ctx.LevelOne.Include(l1 => l1.OneToMany_Optional1).ThenInclude(l2 => l2.OneToOne_Optional_PK2).ThenInclude(l3 => l3.OneToOne_Optional_FK3)
+                    .Include(l1 => l1.OneToMany_Optional1).ThenInclude(l2 => l2.OneToOne_Optional_FK2).ThenInclude(l3 => l3.OneToMany_Optional3);
+
+                var result = query.ToList();
+            }
+        }
+
+        [ConditionalFact(Skip = "issue #15064")]
+        public virtual void IncludeCollection6_4()
+        {
+            using (var ctx = CreateContext())
+            {
+                var query = ctx.LevelOne.Include(l1 => l1.OneToMany_Optional1).ThenInclude(l2 => l2.OneToOne_Optional_PK2).ThenInclude(l3 => l3.OneToOne_Optional_FK3)
+                    .Select(l1 => l1.OneToMany_Optional1.Select(l2 => l2.OneToOne_Optional_PK2));
+
+                var result = query.ToList();
+            }
+        }
+
+        [ConditionalFact(Skip = "issue #15064")]
+        public virtual void IncludeCollection7()
+        {
+            using (var ctx = CreateContext())
+            {
+                var query = ctx.LevelOne.Include(l1 => l1.OneToMany_Optional1).ThenInclude(l2 => l2.OneToOne_Optional_PK2).Select(l1 => new { l1, l1.OneToMany_Optional1 });
+                var result = query.ToList();
+            }
+        }
+
+        [ConditionalFact(Skip = "issue #15064")]
+        public virtual void IncludeCollection8()
+        {
+            using (var ctx = CreateContext())
+            {
+                var query = ctx.LevelOne.Include(l1 => l1.OneToMany_Optional1).ThenInclude(l2 => l2.OneToOne_Optional_PK2).ThenInclude(l3 => l3.OneToOne_Optional_FK3)
+                    .Where(l1 => l1.OneToMany_Optional1.Where(l2 => l2.OneToOne_Optional_PK2.Name != "Foo").Count() > 0);
+
+                var result = query.ToList();
             }
         }
     }
