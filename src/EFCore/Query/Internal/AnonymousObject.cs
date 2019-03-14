@@ -107,5 +107,13 @@ namespace Microsoft.EntityFrameworkCore.Query.Internal
         ///     directly from your code. This API may change or be removed in future releases.
         /// </summary>
         public object GetValue(int index) => _values[index];
+
+        // TODO: temporary hack to compensate for relinq translation - remove once relinq is gone
+        internal bool OnlyNullValues(out int count)
+        {
+            count = _values.Count();
+
+            return _values.All(v => v == null);
+        }
     }
 }

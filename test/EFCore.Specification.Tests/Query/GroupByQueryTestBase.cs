@@ -40,6 +40,15 @@ namespace Microsoft.EntityFrameworkCore.Query
 
         [ConditionalTheory]
         [MemberData(nameof(IsAsyncData))]
+        public virtual Task GroupBy_Property_Select_Average_with_navigation_expansion(bool isAsync)
+        {
+            return AssertQueryScalar<Order>(
+                isAsync,
+                os => os.Where(o => o.Customer.City != "London").GroupBy(o => o.CustomerID, (k, es) => new { k, es }).Select(g => g.es.Average(o => o.OrderID)));
+        }
+
+        [ConditionalTheory]
+        [MemberData(nameof(IsAsyncData))]
         public virtual Task GroupBy_Property_Select_Count(bool isAsync)
         {
             return AssertQueryScalar<Order>(
