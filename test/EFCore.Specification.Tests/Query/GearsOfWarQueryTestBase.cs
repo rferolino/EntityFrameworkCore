@@ -3673,7 +3673,7 @@ namespace Microsoft.EntityFrameworkCore.Query
                 assertOrder: true);
         }
 
-        [ConditionalTheory]
+        [ConditionalTheory(Skip = "Issue #15249")]
         [MemberData(nameof(IsAsyncData))]
         public virtual Task Can_group_by_indexed_property_on_query(bool isAsync)
         {
@@ -3682,7 +3682,7 @@ namespace Microsoft.EntityFrameworkCore.Query
                 cs => cs.GroupBy(c => c[City.NationPropertyName]).Select(g => g.Count()));
         }
 
-        [ConditionalTheory]
+        [ConditionalTheory(Skip = "Issue #15249")]
         [MemberData(nameof(IsAsyncData))]
         public virtual Task Can_group_by_converted_indexed_property_on_query(bool isAsync)
         {
@@ -7065,7 +7065,7 @@ namespace Microsoft.EntityFrameworkCore.Query
                 gs => gs.Include(g => g.CityOfBirth).GroupBy(g => g.Rank).Select(g => g.Sum(gg => gg.SquadId)));
         }
 
-        [ConditionalTheory]
+        [ConditionalTheory(Skip = "Issue #15249")]
         [MemberData(nameof(IsAsyncData))]
         public virtual Task GroupBy_Property_Include_Select_Count(bool isAsync)
         {

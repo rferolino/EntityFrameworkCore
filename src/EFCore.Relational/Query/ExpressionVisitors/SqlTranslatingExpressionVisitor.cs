@@ -1146,19 +1146,8 @@ namespace Microsoft.EntityFrameworkCore.Query.ExpressionVisitors
 
                     return new NullableExpression(newAccessOperation);
 
-                //case NullSafeEqualExpression nullSafeEqualExpression:
-                //    throw new InvalidOperationException("NullSafeEqualExpression shouldn't be here");
-                case NullSafeEqualExpression nullSafeEqualExpression:
-                    var equalityExpression2
-                        = new NullCompensatedExpression(nullSafeEqualExpression.EqualExpression);
-
-                    return Visit(equalityExpression2);
-
                 case CorrelationPredicateExpression correlationPredicateExpression:
-                    var equalityExpression
-                        = new NullCompensatedExpression(correlationPredicateExpression.EqualExpression);
-
-                    return Visit(equalityExpression);
+                    return Visit(new NullCompensatedExpression(correlationPredicateExpression.EqualExpression));
 
                 case NullCompensatedExpression nullCompensatedExpression:
                     newOperand = Visit(nullCompensatedExpression.Operand);

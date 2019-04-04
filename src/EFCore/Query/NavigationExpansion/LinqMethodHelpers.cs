@@ -43,6 +43,8 @@ namespace Microsoft.EntityFrameworkCore.Query.NavigationExpansion
 
         public static MethodInfo QueryableCountMethodInfo { get; private set; }
         public static MethodInfo QueryableCountPredicateMethodInfo { get; private set; }
+        public static MethodInfo QueryableLongCountMethodInfo { get; private set; }
+        public static MethodInfo QueryableLongCountPredicateMethodInfo { get; private set; }
         public static MethodInfo QueryableDistinctMethodInfo { get; private set; }
         public static MethodInfo QueryableTakeMethodInfo { get; private set; }
         public static MethodInfo QueryableSkipMethodInfo { get; private set; }
@@ -83,6 +85,8 @@ namespace Microsoft.EntityFrameworkCore.Query.NavigationExpansion
 
         public static MethodInfo EnumerableCountMethodInfo { get; private set; }
         public static MethodInfo EnumerableCountPredicateMethodInfo { get; private set; }
+        public static MethodInfo EnumerableLongCountMethodInfo { get; private set; }
+        public static MethodInfo EnumerableLongCountPredicateMethodInfo { get; private set; }
 
         static LinqMethodHelpers()
         {
@@ -117,6 +121,8 @@ namespace Microsoft.EntityFrameworkCore.Query.NavigationExpansion
 
             QueryableCountMethodInfo = queryableMethods.Where(m => m.Name == nameof(Queryable.Count) && m.GetParameters().Count() == 1).Single();
             QueryableCountPredicateMethodInfo = queryableMethods.Where(m => m.Name == nameof(Queryable.Count) && m.GetParameters().Count() == 2).Single();
+            QueryableLongCountMethodInfo = queryableMethods.Where(m => m.Name == nameof(Queryable.LongCount) && m.GetParameters().Count() == 1).Single();
+            QueryableLongCountPredicateMethodInfo = queryableMethods.Where(m => m.Name == nameof(Queryable.LongCount) && m.GetParameters().Count() == 2).Single();
 
             QueryableDistinctMethodInfo = queryableMethods.Where(m => m.Name == nameof(Queryable.Distinct) && m.GetParameters().Count() == 1).Single();
             QueryableTakeMethodInfo = queryableMethods.Where(m => m.Name == nameof(Queryable.Take) && m.GetParameters().Count() == 2).Single();
@@ -165,6 +171,8 @@ namespace Microsoft.EntityFrameworkCore.Query.NavigationExpansion
 
             EnumerableCountMethodInfo = enumerableMethods.Where(m => m.Name == nameof(Enumerable.Count) && m.GetParameters().Count() == 1).Single();
             EnumerableCountPredicateMethodInfo = enumerableMethods.Where(m => m.Name == nameof(Enumerable.Count) && m.GetParameters().Count() == 2).Single();
+            EnumerableLongCountMethodInfo = enumerableMethods.Where(m => m.Name == nameof(Enumerable.LongCount) && m.GetParameters().Count() == 1).Single();
+            EnumerableLongCountPredicateMethodInfo = enumerableMethods.Where(m => m.Name == nameof(Enumerable.LongCount) && m.GetParameters().Count() == 2).Single();
         }
 
         private static bool IsExpressionOfFunc(Type type, int parameterCount)

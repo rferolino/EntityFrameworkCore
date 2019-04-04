@@ -38,7 +38,7 @@ namespace Microsoft.EntityFrameworkCore.Query.NavigationExpansion.Visitors
                 var newNavigationExpansion = (NavigationExpansionExpression)Visit(navigationExpansionRootExpression.NavigationExpansion);
 
                 return newNavigationExpansion != navigationExpansionRootExpression.NavigationExpansion
-                    ? new NavigationExpansionRootExpression(newNavigationExpansion, navigationExpansionRootExpression.Mapping, navigationExpansionRootExpression.Type)
+                    ? new NavigationExpansionRootExpression(newNavigationExpansion, navigationExpansionRootExpression.Mapping)
                     : navigationExpansionRootExpression;
             }
 

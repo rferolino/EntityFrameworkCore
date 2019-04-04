@@ -1,7 +1,6 @@
 ﻿// Copyright (c) .NET Foundation. All rights reserved.
 // Licensed under the Apache License, Version 2.0. See License.txt in the project root for license information.
 
-using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Linq.Expressions;
@@ -16,36 +15,46 @@ namespace Microsoft.EntityFrameworkCore.Query.NavigationExpansion
         /// <summary>
         ///     Navigation doesn't need to be expanded
         /// </summary>
-        NotNeeded,
+        NotNeeded22,
 
         /// <summary>
-        ///     Navigation needs to be expanded, but hasn't been expanded yet
+        ///     Reference navigation needs to be expanded, but hasn't been expanded yet
         /// </summary>
-        Pending,
+        ReferencePending,
 
         /// <summary>
-        ///     Navigation had already been expanded
+        ///     Reference navigation had already been expanded
         /// </summary>
-        Complete,
+        ReferenceComplete,
+
+        /// <summary>
+        ///     Collection navigation needs to be expanded
+        /// </summary>
+        Collection,
     };
 
     // TODO: combine! (or maybe use Nullable<bool>)
     public enum NavigationTreeNodeIncludeMode
     {
         /// <summary>
-        ///     Navigation doesn't need to be expanded
+        ///     Navigation doesn't need to be included
         /// </summary>
-        NotNeeded,
+        NotNeeded33,
 
         /// <summary>
-        ///     Navigation needs to be expanded, but hasn't been expanded yet
+        ///     Navigation needs to be expanded, but hasn't been included yet
         /// </summary>
-        Pending,
+        ReferencePending,
 
         /// <summary>
-        ///     Navigation had already been expanded
+        ///     Navigation had already been included
         /// </summary>
-        Complete,
+        ReferenceComplete,
+
+        /// <summary>
+        ///     Collection navigation needs to be included
+        /// </summary>
+        Collection,
     };
 
     public class NavigationTreeNode
@@ -65,13 +74,17 @@ namespace Microsoft.EntityFrameworkCore.Query.NavigationExpansion
             ToMapping = new List<string>();
             if (include)
             {
-                ExpansionMode = NavigationTreeNodeExpansionMode.NotNeeded;
-                Included = NavigationTreeNodeIncludeMode.Pending;
+                ExpansionMode = NavigationTreeNodeExpansionMode.NotNeeded22;
+                Included = navigation.IsCollection()
+                    ? NavigationTreeNodeIncludeMode.Collection
+                    : NavigationTreeNodeIncludeMode.ReferencePending;
             }
             else
             {
-                ExpansionMode = NavigationTreeNodeExpansionMode.Pending;
-                Included = NavigationTreeNodeIncludeMode.NotNeeded;
+                ExpansionMode = navigation.IsCollection()
+                    ? NavigationTreeNodeExpansionMode.Collection
+                    : NavigationTreeNodeExpansionMode.ReferencePending;
+                Included = NavigationTreeNodeIncludeMode.NotNeeded33;
             }
 
             foreach (var parentFromMapping in parent.FromMappings)
@@ -89,8 +102,8 @@ namespace Microsoft.EntityFrameworkCore.Query.NavigationExpansion
             Optional = optional;
             FromMappings.Add(fromMapping.ToList());
             ToMapping = fromMapping.ToList();
-            ExpansionMode = NavigationTreeNodeExpansionMode.Complete;
-            Included = NavigationTreeNodeIncludeMode.NotNeeded;
+            ExpansionMode = NavigationTreeNodeExpansionMode.ReferenceComplete;
+            Included = NavigationTreeNodeIncludeMode.NotNeeded33;
         }
 
         public INavigation Navigation { get; private set; }
@@ -127,13 +140,17 @@ namespace Microsoft.EntityFrameworkCore.Query.NavigationExpansion
             var existingChild = parent.Children.Where(c => c.Navigation == navigation).SingleOrDefault();
             if (existingChild != null)
             {
-                if (include && existingChild.Included == NavigationTreeNodeIncludeMode.NotNeeded)
+                if (include && existingChild.Included == NavigationTreeNodeIncludeMode.NotNeeded33)
                 {
-                    existingChild.Included = NavigationTreeNodeIncludeMode.Pending;
+                    existingChild.Included = navigation.IsCollection()
+                        ? NavigationTreeNodeIncludeMode.Collection
+                        : NavigationTreeNodeIncludeMode.ReferencePending;
                 }
-                else if (!include && existingChild.ExpansionMode == NavigationTreeNodeExpansionMode.NotNeeded)
+                else if (!include && existingChild.ExpansionMode == NavigationTreeNodeExpansionMode.NotNeeded22)
                 {
-                    existingChild.ExpansionMode = NavigationTreeNodeExpansionMode.Pending;
+                    existingChild.ExpansionMode = navigation.IsCollection()
+                        ? NavigationTreeNodeExpansionMode.Collection
+                        : NavigationTreeNodeExpansionMode.ReferencePending;
                 }
 
                 return existingChild;

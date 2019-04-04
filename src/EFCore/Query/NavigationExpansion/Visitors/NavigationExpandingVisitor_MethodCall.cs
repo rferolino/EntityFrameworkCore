@@ -57,6 +57,9 @@ namespace Microsoft.EntityFrameworkCore.Query.NavigationExpansion.Visitors
                 case nameof(Queryable.Count):
                     return ProcessCount(methodCallExpression);
 
+                case nameof(Queryable.LongCount):
+                    return ProcessLongCount(methodCallExpression);
+
                 case nameof(Queryable.Distinct):
                     return ProcessDistinct(methodCallExpression);
 
@@ -531,7 +534,7 @@ namespace Microsoft.EntityFrameworkCore.Query.NavigationExpansion.Visitors
 
             var remappedResultSelectorBody = new ExpressionReplacingVisitor(
                 groupingParameter,
-                new NavigationExpansionRootExpression(newGrouping, groupingMapping, groupingParameter.Type)).Visit(remappedResultSelector.Body);
+                new NavigationExpansionRootExpression(newGrouping, groupingMapping)).Visit(remappedResultSelector.Body);
             //remappedResultSelector = Expression.Lambda(remappedResultSelectorBody, outerState.CurrentParameter, newGroupingParameter);
 
             foreach (var outerCustomRootMapping in outerApplyOrderingsResult.state.CustomRootMappings)
@@ -541,7 +544,7 @@ namespace Microsoft.EntityFrameworkCore.Query.NavigationExpansion.Visitors
 
             foreach (var outerSourceMapping in outerApplyOrderingsResult.state.SourceMappings)
             {
-                foreach (var navigationTreeNode in outerSourceMapping.NavigationTree.Flatten().Where(n => n.ExpansionMode == NavigationTreeNodeExpansionMode.Complete))
+                foreach (var navigationTreeNode in outerSourceMapping.NavigationTree.Flatten().Where(n => n.ExpansionMode == NavigationTreeNodeExpansionMode.ReferenceComplete))
                 {
                     navigationTreeNode.ToMapping.Insert(0, nameof(TransparentIdentifierGJ<object, object>.Outer));
                     foreach (var fromMapping in navigationTreeNode.FromMappings)
@@ -655,6 +658,8 @@ namespace Microsoft.EntityFrameworkCore.Query.NavigationExpansion.Visitors
                     newPredicateBody,
                     applyOrderingsResult.state.CurrentParameter));
 
+            // TODO: remove all includes
+
             return rewritten;
         }
 
@@ -671,6 +676,8 @@ namespace Microsoft.EntityFrameworkCore.Query.NavigationExpansion.Visitors
             }
 
             var source = VisitSourceExpression(methodCallExpression.Arguments[0]);
+
+            // TODO: remove all includes
 
             return methodCallExpression.Update(methodCallExpression.Object, new[] { source });
         }
@@ -692,6 +699,8 @@ namespace Microsoft.EntityFrameworkCore.Query.NavigationExpansion.Visitors
                 return Expression.Call(newMethod, applyOrderingsResult.source, newSelector);
             }
 
+            // TODO: remove all includes
+
             return methodCallExpression.Update(methodCallExpression.Object, new[] { source });
         }
 
@@ -709,8 +718,30 @@ namespace Microsoft.EntityFrameworkCore.Query.NavigationExpansion.Visitors
 
             var source = VisitSourceExpression(methodCallExpression.Arguments[0]);
 
+            // TODO: remove all includes
+
             return methodCallExpression.Update(methodCallExpression.Object, new[] { source });
         }
+
+        private Expression ProcessLongCount(MethodCallExpression methodCallExpression)
+        {
+            if (methodCallExpression.Method.MethodIsClosedFormOf(LinqMethodHelpers.QueryableCountPredicateMethodInfo))
+            {
+                return ProcessLongCount(SimplifyPredicateMethod(methodCallExpression, queryable: true));
+            }
+
+            if (methodCallExpression.Method.MethodIsClosedFormOf(LinqMethodHelpers.EnumerableCountPredicateMethodInfo))
+            {
+                return ProcessLongCount(SimplifyPredicateMethod(methodCallExpression, queryable: false));
+            }
+
+            var source = VisitSourceExpression(methodCallExpression.Arguments[0]);
+
+            // TODO: remove all includes
+
+            return methodCallExpression.Update(methodCallExpression.Object, new[] { source });
+        }
+
 
         private Expression ProcessDistinct(MethodCallExpression methodCallExpression)
         {
@@ -860,15 +891,57 @@ namespace Microsoft.EntityFrameworkCore.Query.NavigationExpansion.Visitors
             }
         }
 
-        private Expression ProcessInclude(MethodCallExpression methodCallExpression)
+        private MethodCallExpression TryConvertToLambdaInclude(MethodCallExpression methodCallExpression)
         {
-            // TODO: for now
-            if (methodCallExpression.Arguments[1].Type == typeof(string))
+            if (methodCallExpression.Arguments[1].Type != typeof(string))
             {
                 return methodCallExpression;
             }
 
             var source = VisitSourceExpression(methodCallExpression.Arguments[0]);
+
+            var includeString = (string)((ConstantExpression)methodCallExpression.Arguments[1]).Value;
+            var includeElements = includeString.Split(new[] { "." }, StringSplitOptions.RemoveEmptyEntries);
+
+            var result = (Expression)new NavigationExpansionRootExpression(source, new List<string>());
+
+            // TODO: this is not always correct IF we allow includes in random places (e.g. after joins)
+            var rootEntityType = source.State.SourceMappings.Single().RootEntityType;
+            var entityType = rootEntityType;
+
+            var previousCollectionInclude = false;
+            for (var i = 0; i < includeElements.Length; i++)
+            {
+                var parameter = Expression.Parameter(entityType.ClrType, entityType.ClrType.GenerateParameterName());
+
+                // TODO: deal with inheritance AND case where multiple children have navigation with the same name - we need to branch out in that scenario
+                var navigation = entityType.FindNavigation(includeElements[i]);
+                if (navigation == null)
+                {
+                    throw new InvalidOperationException("Invalid include path: '" + includeString + "' - couldn't find navigation for: '" + includeElements[i] + "'");
+                }
+
+                var lambda = Expression.Lambda(Expression.Property(parameter, navigation.PropertyInfo), parameter);
+                var includeMethodInfo = i == 0
+                    ? EntityFrameworkQueryableExtensions.IncludeMethodInfo.MakeGenericMethod(rootEntityType.ClrType, navigation.ClrType)
+                    : previousCollectionInclude
+                        ? EntityFrameworkQueryableExtensions.ThenIncludeAfterEnumerableMethodInfo.MakeGenericMethod(rootEntityType.ClrType, entityType.ClrType, navigation.ClrType)
+                        : EntityFrameworkQueryableExtensions.ThenIncludeAfterReferenceMethodInfo.MakeGenericMethod(rootEntityType.ClrType, entityType.ClrType, navigation.ClrType);
+
+                result = Expression.Call(includeMethodInfo, result, lambda);
+                previousCollectionInclude = navigation.IsCollection();
+                entityType = navigation.GetTargetType();
+            }
+
+            return (MethodCallExpression)result;
+        }
+
+        private Expression ProcessInclude(MethodCallExpression methodCallExpression)
+        {
+            methodCallExpression = TryConvertToLambdaInclude(methodCallExpression);
+
+            var source = VisitSourceExpression(methodCallExpression.Arguments[0]);
+
             var includeLambda = methodCallExpression.Arguments[1].UnwrapQuote();
             AdjustCurrentParameterName(source.State, includeLambda.Parameters[0].Name);
 
@@ -1132,6 +1205,9 @@ namespace Microsoft.EntityFrameworkCore.Query.NavigationExpansion.Visitors
                     case nameof(Queryable.Count):
                         return LinqMethodHelpers.QueryableCountMethodInfo;
 
+                    case nameof(Queryable.LongCount):
+                        return LinqMethodHelpers.QueryableLongCountMethodInfo;
+
                     case nameof(Queryable.First):
                         return LinqMethodHelpers.QueryableFirstMethodInfo;
 
@@ -1154,6 +1230,9 @@ namespace Microsoft.EntityFrameworkCore.Query.NavigationExpansion.Visitors
                 {
                     case nameof(Enumerable.Count):
                         return LinqMethodHelpers.EnumerableCountMethodInfo;
+
+                    case nameof(Enumerable.LongCount):
+                        return LinqMethodHelpers.EnumerableLongCountMethodInfo;
 
                     case nameof(Enumerable.First):
                         return LinqMethodHelpers.EnumerableFirstMethodInfo;
@@ -1290,7 +1369,7 @@ namespace Microsoft.EntityFrameworkCore.Query.NavigationExpansion.Visitors
 
             foreach (var sourceMapping in state.SourceMappings)
             {
-                if (sourceMapping.NavigationTree.Flatten().Any(n => n.ExpansionMode == NavigationTreeNodeExpansionMode.Pending))
+                if (sourceMapping.NavigationTree.Flatten().Any(n => n.ExpansionMode == NavigationTreeNodeExpansionMode.ReferencePending))
                 {
                     foreach (var navigationTree in sourceMapping.NavigationTree.Children)
                     {
@@ -1361,7 +1440,7 @@ namespace Microsoft.EntityFrameworkCore.Query.NavigationExpansion.Visitors
             NavigationExpansionExpressionState state,
             List<INavigation> navigationPath)
         {
-            if (navigationTree.ExpansionMode == NavigationTreeNodeExpansionMode.Pending)
+            if (navigationTree.ExpansionMode == NavigationTreeNodeExpansionMode.ReferencePending)
             {
                 // TODO: hack - if we wrapped collection around MaterializeCollectionNavigation during collection rewrite, unwrap that call when applying navigations on top
                 if (sourceExpression is MethodCallExpression sourceMethodCall
@@ -1565,7 +1644,7 @@ namespace Microsoft.EntityFrameworkCore.Query.NavigationExpansion.Visitors
                 navigationTree.ToMapping.Insert(0, nameof(TransparentIdentifier<object, object>.Inner));
                 foreach (var mapping in state.SourceMappings)
                 {
-                    foreach (var navigationTreeNode in mapping.NavigationTree.Flatten().Where(n => n.ExpansionMode == NavigationTreeNodeExpansionMode.Complete && n != navigationTree))
+                    foreach (var navigationTreeNode in mapping.NavigationTree.Flatten().Where(n => n.ExpansionMode == NavigationTreeNodeExpansionMode.ReferenceComplete && n != navigationTree))
                     {
                         navigationTreeNode.ToMapping.Insert(0, nameof(TransparentIdentifier<object, object>.Outer));
                         if (navigationTree.Optional)
@@ -1584,7 +1663,7 @@ namespace Microsoft.EntityFrameworkCore.Query.NavigationExpansion.Visitors
                     }
                 }
 
-                navigationTree.ExpansionMode = NavigationTreeNodeExpansionMode.Complete;
+                navigationTree.ExpansionMode = NavigationTreeNodeExpansionMode.ReferenceComplete;
                 navigationPath.Add(navigation);
             }
             else
@@ -1653,7 +1732,7 @@ namespace Microsoft.EntityFrameworkCore.Query.NavigationExpansion.Visitors
 
             foreach (var outerSourceMapping in outerState.SourceMappings)
             {
-                foreach (var navigationTreeNode in outerSourceMapping.NavigationTree.Flatten().Where(n => n.ExpansionMode == NavigationTreeNodeExpansionMode.Complete))
+                foreach (var navigationTreeNode in outerSourceMapping.NavigationTree.Flatten().Where(n => n.ExpansionMode == NavigationTreeNodeExpansionMode.ReferenceComplete))
                 {
                     navigationTreeNode.ToMapping.Insert(0, nameof(TransparentIdentifier2<object, object>.Outer));
                     foreach (var fromMapping in navigationTreeNode.FromMappings)
@@ -1675,7 +1754,7 @@ namespace Microsoft.EntityFrameworkCore.Query.NavigationExpansion.Visitors
 
             foreach (var innerSourceMapping in innerState.SourceMappings)
             {
-                foreach (var navigationTreeNode in innerSourceMapping.NavigationTree.Flatten().Where(n => n.ExpansionMode == NavigationTreeNodeExpansionMode.Complete))
+                foreach (var navigationTreeNode in innerSourceMapping.NavigationTree.Flatten().Where(n => n.ExpansionMode == NavigationTreeNodeExpansionMode.ReferenceComplete))
                 {
                     navigationTreeNode.ToMapping.Insert(0, nameof(TransparentIdentifier2<object, object>.Inner));
                     foreach (var fromMapping in navigationTreeNode.FromMappings)

@@ -69,13 +69,14 @@ namespace Microsoft.EntityFrameworkCore.Query.NavigationExpansion
             = typeof(NavigationExpansionHelpers).GetTypeInfo()
                 .GetDeclaredMethod(nameof(MaterializeCollectionNavigation));
 
-        public static ICollection<TEntity> MaterializeCollectionNavigation<TEntity>(
+        public static TResult MaterializeCollectionNavigation<TResult, TEntity>(
             IEnumerable<object> elements,
             INavigation navigation)
+            where TResult: ICollection<TEntity>
         {
             var collection = navigation.GetCollectionAccessor().Create(elements);
 
-            return (ICollection<TEntity>)collection;
+            return (TResult)collection;
         }
     }
 }

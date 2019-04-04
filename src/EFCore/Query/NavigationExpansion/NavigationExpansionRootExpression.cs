@@ -18,13 +18,12 @@ namespace Microsoft.EntityFrameworkCore.Query.NavigationExpansion
         public List<string> Mapping { get; }
         public override ExpressionType NodeType => ExpressionType.Extension;
         public override bool CanReduce => false;
-        public override Type Type { get; }
+        public override Type Type => NavigationExpansion.Type;
 
-        public NavigationExpansionRootExpression(NavigationExpansionExpression navigationExpansion, List<string> mapping, Type type)
+        public NavigationExpansionRootExpression(NavigationExpansionExpression navigationExpansion, List<string> mapping)
         {
             NavigationExpansion = navigationExpansion;
             Mapping = mapping;
-            Type = type;
         }
 
         // TODO: HACK!!!

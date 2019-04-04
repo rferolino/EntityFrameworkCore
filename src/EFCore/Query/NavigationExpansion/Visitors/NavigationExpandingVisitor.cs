@@ -42,6 +42,11 @@ namespace Microsoft.EntityFrameworkCore.Query.NavigationExpansion.Visitors
                 return includeExpression;
             }
 
+            if (extensionExpression is NavigationExpansionExpression)
+            {
+                throw new InvalidOperationException("trying to reduce NEE!!!");
+            }
+
             return base.VisitExtension(extensionExpression);
         }
 

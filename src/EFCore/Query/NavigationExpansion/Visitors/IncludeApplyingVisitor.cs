@@ -33,10 +33,13 @@ namespace Microsoft.EntityFrameworkCore.Query.NavigationExpansion.Visitors
                 var result = (Expression)navigationBindingExpression;
                 //result = CreateIncludeCall(result, navigationBindingExpression.NavigationTreeNode, navigationBindingExpression.RootParameter, navigationBindingExpression.SourceMapping);
 
-                foreach (var child in navigationBindingExpression.NavigationTreeNode.Children.Where(n => n.Included == NavigationTreeNodeIncludeMode.Pending))
+                foreach (var child in navigationBindingExpression.NavigationTreeNode.Children.Where(n => n.Included == NavigationTreeNodeIncludeMode.ReferencePending || n.Included == NavigationTreeNodeIncludeMode.Collection))
                 {
                     result = CreateIncludeCall(result, child, navigationBindingExpression.RootParameter, navigationBindingExpression.SourceMapping);
-                    child.Included = NavigationTreeNodeIncludeMode.Complete;
+                    if (child.Included == NavigationTreeNodeIncludeMode.ReferencePending)
+                    {
+                        child.Included = NavigationTreeNodeIncludeMode.ReferenceComplete;
+                    }
                 }
 
                 return result;
@@ -72,10 +75,10 @@ namespace Microsoft.EntityFrameworkCore.Query.NavigationExpansion.Visitors
             var entityType = node.Navigation.GetTargetType();
             var included = (Expression)new NavigationBindingExpression(rootParameter, node, entityType, sourceMapping, entityType.ClrType);
 
-            foreach (var child in node.Children.Where(n => n.Included == NavigationTreeNodeIncludeMode.Pending))
+            foreach (var child in node.Children.Where(n => n.Included == NavigationTreeNodeIncludeMode.ReferencePending))
             {
                 included = CreateIncludeCall(included, child, rootParameter, sourceMapping);
-                child.Included = NavigationTreeNodeIncludeMode.Complete;
+                child.Included = NavigationTreeNodeIncludeMode.ReferenceComplete;
             }
 
             return new IncludeExpression(caller, included, node.Navigation);
@@ -85,111 +88,7 @@ namespace Microsoft.EntityFrameworkCore.Query.NavigationExpansion.Visitors
         {
             var included = CollectionNavigationRewritingVisitor.CreateCollectionNavigationExpression2(node, rootParameter, sourceMapping);
 
-            //var entityType = node.Navigation.GetTargetType();
-
-            //// TODO: copied from CollectionNavigationRewritingVisitor - DRY!
-
-            //// TODO: which one is the correct entity type here???
-            ////var collectionNavigationElementType = node.Navigation.ForeignKey.DeclaringEntityType.ClrType;
-            //var collectionNavigationElementType = entityType.ClrType;
-            //var entityQueryable = NullAsyncQueryProvider.Instance.CreateEntityQueryableExpression(collectionNavigationElementType);
-
-            ////TODO: this could be other things too: EF.Property and maybe field
-            //var outerBinding = new NavigationBindingExpression(
-            //rootParameter,
-            //node.Parent,
-            //node.Navigation.DeclaringEntityType,
-            //sourceMapping,
-            //node.Navigation.DeclaringEntityType.ClrType);
-
-            //var outerKeyAccess = NavigationExpansionHelpers.CreateKeyAccessExpression(
-            //    outerBinding,
-            //    node.Navigation.ForeignKey.PrincipalKey.Properties,
-            //    addNullCheck: outerBinding.NavigationTreeNode.Optional);
-
-            //var innerParameter = Expression.Parameter(collectionNavigationElementType, collectionNavigationElementType.GenerateParameterName());
-            //var innerKeyAccess = NavigationExpansionHelpers.CreateKeyAccessExpression(
-            //    innerParameter,
-            //    node.Navigation.ForeignKey.Properties);
-
-            //var predicate = Expression.Lambda(
-            //    CreateKeyComparisonExpressionForCollectionNavigationSubquery(
-            //        outerKeyAccess,
-            //        innerKeyAccess,
-            //        outerBinding/*,
-            //            navigationBindingExpression.RootParameter,
-            //            // TODO: this is hacky
-            //            navigationBindingExpression.NavigationTreeNode.NavigationChain()*/),
-            //    innerParameter);
-
-            ////predicate = (LambdaExpression)new NavigationPropertyUnbindingBindingExpressionVisitor(navigationBindingExpression.RootParameter).Visit(predicate);
-
-            //var included = Expression.Call(
-            //    LinqMethodHelpers.QueryableWhereMethodInfo.MakeGenericMethod(collectionNavigationElementType),
-            //    entityQueryable,
-            //    predicate);
-
-            //foreach (var child in node.Children.Where(n => n.Included == NavigationTreeNodeIncludeMode.Pending))
-            //{
-            //    included = Expression.Call(
-            //        LinqMethodHelpers.QueryableSelectMethodInfo.MakeGenericMethod(collectionNavigationElementType, collectionNavigationElementType),
-            //        CreateIncludeCall(included, child, innerParameter, sourceMapping),
-            //        innerParameter);
-
-            //    child.Included = NavigationTreeNodeIncludeMode.Complete;
-            //}
-
-            //included = Expression.Call(
-            //    NavigationExpansionHelpers.MaterializeCollectionNavigationMethodInfo.MakeGenericMethod(
-            //        node.Navigation.GetTargetType().ClrType),
-            //    included,
-            //    Expression.Constant(node.Navigation));
-
-            //var result = Expression.Call(
-            //    LinqMethodHelpers.QueryableWhereMethodInfo.MakeGenericMethod(collectionNavigationElementType),
-            //    entityQueryable,
-            //    predicate);
-
-            //return Expression.Call(
-            //    NavigationExpansionHelpers.MaterializeCollectionNavigationMethodInfo.MakeGenericMethod(result.Type.GetSequenceType()),
-            //    result,
-            //    Expression.Constant(lastNavigation));
-
-
             return new IncludeExpression(caller, included, node.Navigation);
-        }
-
-        // TODO: DRY!
-        private static Expression CreateKeyComparisonExpressionForCollectionNavigationSubquery(
-            Expression outerKeyExpression,
-            Expression innerKeyExpression,
-            Expression colectionRootExpression)
-        {
-            if (outerKeyExpression.Type != innerKeyExpression.Type)
-            {
-                if (outerKeyExpression.Type.IsNullableType())
-                {
-                    Debug.Assert(outerKeyExpression.Type.UnwrapNullableType() == innerKeyExpression.Type);
-
-                    innerKeyExpression = Expression.Convert(innerKeyExpression, outerKeyExpression.Type);
-                }
-                else
-                {
-                    Debug.Assert(innerKeyExpression.Type.IsNullableType());
-                    Debug.Assert(innerKeyExpression.Type.UnwrapNullableType() == outerKeyExpression.Type);
-
-                    outerKeyExpression = Expression.Convert(outerKeyExpression, innerKeyExpression.Type);
-                }
-            }
-
-            var outerNullProtection
-                = Expression.NotEqual(
-                    colectionRootExpression,
-                    Expression.Constant(null, colectionRootExpression.Type));
-
-            return new CorrelationPredicateExpression(
-                outerNullProtection,
-                Expression.Equal(outerKeyExpression, innerKeyExpression));
         }
     }
 
@@ -204,7 +103,7 @@ namespace Microsoft.EntityFrameworkCore.Query.NavigationExpansion.Visitors
                 return;
             }
 
-            if (node.Included == NavigationTreeNodeIncludeMode.Pending && node.ExpansionMode != NavigationTreeNodeExpansionMode.Complete)
+            if (node.Included == NavigationTreeNodeIncludeMode.ReferencePending && node.ExpansionMode != NavigationTreeNodeExpansionMode.ReferenceComplete)
             {
                 PendingIncludes[node] = sourceMapping;
             }

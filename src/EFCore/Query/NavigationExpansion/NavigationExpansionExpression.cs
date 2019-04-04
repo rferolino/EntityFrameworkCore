@@ -88,6 +88,7 @@ namespace Microsoft.EntityFrameworkCore.Query.NavigationExpansion
             {
                 result = Call(
                     NavigationExpansionHelpers.MaterializeCollectionNavigationMethodInfo.MakeGenericMethod(
+                        State.MaterializeCollectionNavigation.ClrType,
                         State.MaterializeCollectionNavigation.GetTargetType().ClrType),
                     result,
                     Constant(State.MaterializeCollectionNavigation));
@@ -184,7 +185,7 @@ namespace Microsoft.EntityFrameworkCore.Query.NavigationExpansion
             NavigationExpansionExpressionState state,
             List<INavigation> navigationPath)
         {
-            if (navigationTree.ExpansionMode != NavigationTreeNodeExpansionMode.Complete)
+            if (navigationTree.ExpansionMode == NavigationTreeNodeExpansionMode.ReferencePending)
             {
                 // TODO: hack - if we wrapped collection around MaterializeCollectionNavigation during collection rewrite, unwrap that call when applying navigations on top
                 if (sourceExpression is MethodCallExpression sourceMethodCall
@@ -388,7 +389,7 @@ namespace Microsoft.EntityFrameworkCore.Query.NavigationExpansion
                 navigationTree.ToMapping.Insert(0, nameof(TransparentIdentifier<object, object>.Inner));
                 foreach (var mapping in state.SourceMappings)
                 {
-                    foreach (var navigationTreeNode in mapping.NavigationTree.Flatten().Where(n => n.ExpansionMode == NavigationTreeNodeExpansionMode.Complete && n != navigationTree))
+                    foreach (var navigationTreeNode in mapping.NavigationTree.Flatten().Where(n => n.ExpansionMode == NavigationTreeNodeExpansionMode.ReferenceComplete && n != navigationTree))
                     {
                         navigationTreeNode.ToMapping.Insert(0, nameof(TransparentIdentifier<object, object>.Outer));
                         if (navigationTree.Optional)
@@ -407,7 +408,7 @@ namespace Microsoft.EntityFrameworkCore.Query.NavigationExpansion
                     }
                 }
 
-                navigationTree.ExpansionMode = NavigationTreeNodeExpansionMode.Complete;
+                navigationTree.ExpansionMode = NavigationTreeNodeExpansionMode.ReferenceComplete;
                 navigationPath.Add(navigation);
             }
             else
