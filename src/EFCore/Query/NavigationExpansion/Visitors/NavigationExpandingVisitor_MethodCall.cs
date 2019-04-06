@@ -17,6 +17,24 @@ namespace Microsoft.EntityFrameworkCore.Query.NavigationExpansion.Visitors
     {
         protected override Expression VisitMethodCall(MethodCallExpression methodCallExpression)
         {
+            if (methodCallExpression.Method.IsEFPropertyMethod())
+            {
+                var newSource = Visit(methodCallExpression.Arguments[0]);
+                if (newSource is NavigationExpansionExpression navigationExpansionExpression
+                    && navigationExpansionExpression.State.PendingCardinalityReducingOperator != null)
+                {
+                    return ProcessMemberPushdown(
+                        newSource,
+                        navigationExpansionExpression,
+                        efProperty: true,
+                        memberInfo: null,
+                        (string)((ConstantExpression)methodCallExpression.Arguments[1]).Value,
+                        methodCallExpression.Type);
+                }
+
+                return methodCallExpression.Update(methodCallExpression.Object, new[] { newSource, methodCallExpression.Arguments[1] });
+            }
+
             switch (methodCallExpression.Method.Name)
             {
                 case nameof(Queryable.Where):
@@ -42,23 +60,24 @@ namespace Microsoft.EntityFrameworkCore.Query.NavigationExpansion.Visitors
                 case nameof(Queryable.SelectMany):
                     return ProcessSelectMany(methodCallExpression);
 
-                case nameof(Queryable.GroupBy):
-                    return ProcessGroupBy(methodCallExpression);
+                //case nameof(Queryable.GroupBy):
+                //    return ProcessGroupBy(methodCallExpression);
 
                 case nameof(Queryable.All):
                     return ProcessAll(methodCallExpression);
 
                 case nameof(Queryable.Any):
-                    return ProcessAny(methodCallExpression);
+                case nameof(Queryable.Count):
+                case nameof(Queryable.LongCount):
+                    return ProcessScalarReturningOperation(methodCallExpression);
 
                 case nameof(Queryable.Average):
-                    return ProcessAverage(methodCallExpression);
+                case nameof(Queryable.Sum):
+                    return ProcessAverageSum(methodCallExpression);
 
-                case nameof(Queryable.Count):
-                    return ProcessCount(methodCallExpression);
-
-                case nameof(Queryable.LongCount):
-                    return ProcessLongCount(methodCallExpression);
+                case nameof(Queryable.Min):
+                case nameof(Queryable.Max):
+                    return ProcessMinMax(methodCallExpression);
 
                 case nameof(Queryable.Distinct):
                     return ProcessDistinct(methodCallExpression);
@@ -86,6 +105,10 @@ namespace Microsoft.EntityFrameworkCore.Query.NavigationExpansion.Visitors
                 case "Include":
                 case "ThenInclude":
                     return ProcessInclude(methodCallExpression);
+
+                    // TODO: should we have relational version of this? - probaby
+                case "FromRawSql":
+                    return ProcessFromRawSql(methodCallExpression);
 
                 case "MaterializeCollectionNavigation":
                     return ProcessMaterializeCollectionNavigation(methodCallExpression);
@@ -625,10 +648,10 @@ namespace Microsoft.EntityFrameworkCore.Query.NavigationExpansion.Visitors
                 methodCallExpression.Type);
         }
 
-        private Expression ProcessGroupBy(MethodCallExpression methodCallExpression)
-        {
-            return methodCallExpression;
-        }
+        //private Expression ProcessGroupBy(MethodCallExpression methodCallExpression)
+        //{
+        //    return methodCallExpression;
+        //}
 
         private bool IsQueryable(Type type)
         {
@@ -643,6 +666,7 @@ namespace Microsoft.EntityFrameworkCore.Query.NavigationExpansion.Visitors
         private Expression ProcessAll(MethodCallExpression methodCallExpression)
         {
             var source = VisitSourceExpression(methodCallExpression.Arguments[0]);
+            source = RemoveIncludesFromSource(source);
             var predicate = methodCallExpression.Arguments[1].UnwrapQuote();
             AdjustCurrentParameterName(source.State, predicate.Parameters[0].Name);
 
@@ -658,33 +682,65 @@ namespace Microsoft.EntityFrameworkCore.Query.NavigationExpansion.Visitors
                     newPredicateBody,
                     applyOrderingsResult.state.CurrentParameter));
 
-            // TODO: remove all includes
-
             return rewritten;
         }
 
-        private Expression ProcessAny(MethodCallExpression methodCallExpression)
+        private Expression ProcessScalarReturningOperation(MethodCallExpression methodCallExpression)
         {
-            if (methodCallExpression.Method.MethodIsClosedFormOf(LinqMethodHelpers.QueryableAnyPredicateMethodInfo))
+            if (methodCallExpression.Method.MethodIsClosedFormOf(LinqMethodHelpers.QueryableAnyPredicateMethodInfo)
+                || methodCallExpression.Method.MethodIsClosedFormOf(LinqMethodHelpers.QueryableCountPredicateMethodInfo)
+                || methodCallExpression.Method.MethodIsClosedFormOf(LinqMethodHelpers.QueryableLongCountPredicateMethodInfo))
             {
-                return ProcessAny(SimplifyPredicateMethod(methodCallExpression, queryable: true));
+                return ProcessScalarReturningOperation(SimplifyPredicateMethod(methodCallExpression, queryable: true));
             }
 
-            if (methodCallExpression.Method.MethodIsClosedFormOf(LinqMethodHelpers.EnumerableAnyPredicateMethodInfo))
+            if (methodCallExpression.Method.MethodIsClosedFormOf(LinqMethodHelpers.EnumerableAnyPredicateMethodInfo)
+                || methodCallExpression.Method.MethodIsClosedFormOf(LinqMethodHelpers.EnumerableCountPredicateMethodInfo)
+                || methodCallExpression.Method.MethodIsClosedFormOf(LinqMethodHelpers.EnumerableLongCountPredicateMethodInfo))
             {
-                return ProcessAny(SimplifyPredicateMethod(methodCallExpression, queryable: false));
+                return ProcessScalarReturningOperation(SimplifyPredicateMethod(methodCallExpression, queryable: false));
             }
 
             var source = VisitSourceExpression(methodCallExpression.Arguments[0]);
-
-            // TODO: remove all includes
+            source = RemoveIncludesFromSource(source);
 
             return methodCallExpression.Update(methodCallExpression.Object, new[] { source });
         }
 
-        private Expression ProcessAverage(MethodCallExpression methodCallExpression)
+        private NavigationExpansionExpression RemoveIncludesFromSource(NavigationExpansionExpression source)
         {
+            foreach (var sourceMapping in source.State.SourceMappings)
+            {
+                RemoveIncludes(sourceMapping.NavigationTree);
+            }
+
+            return source.Type.IsGenericType
+                && source.Type.GetGenericTypeDefinition() == typeof(IIncludableQueryable<,>)
+                && source.Operand.Type != source.Type
+                ? new NavigationExpansionExpression(source.Operand, source.State, source.Operand.Type)
+                : source;
+        }
+
+        private void RemoveIncludes(NavigationTreeNode navigationTreeNode)
+        {
+            navigationTreeNode.Included = NavigationTreeNodeIncludeMode.NotNeeded33;
+            foreach (var child in navigationTreeNode.Children)
+            {
+                RemoveIncludes(child);
+            }
+        }
+
+        // TODO: combine with minmax?
+        private Expression ProcessAverageSum(MethodCallExpression methodCallExpression)
+        {
+            // TODO: hack - this should be resolved when/if we match based on method info
+            if (methodCallExpression.Method.DeclaringType == typeof(Math))
+            {
+                return base.VisitMethodCall(methodCallExpression);
+            }
+
             var source = VisitSourceExpression(methodCallExpression.Arguments[0]);
+            source = RemoveIncludesFromSource(source);
             if (methodCallExpression.Arguments.Count == 2)
             {
                 var selector = methodCallExpression.Arguments[1].UnwrapQuote();
@@ -693,55 +749,51 @@ namespace Microsoft.EntityFrameworkCore.Query.NavigationExpansion.Visitors
                 var newSelectorBody = new NavigationPropertyUnbindingVisitor(applyNavigationsResult.state.CurrentParameter).Visit(applyNavigationsResult.lambdaBody);
                 var newSelector = Expression.Lambda(newSelectorBody, applyNavigationsResult.state.CurrentParameter);
 
-                var applyOrderingsResult = ApplyPendingOrderings(source.Operand, source.State);
+                var applyOrderingsResult = ApplyPendingOrderings(applyNavigationsResult.source, applyNavigationsResult.state);
                 var newMethod = methodCallExpression.Method.GetGenericMethodDefinition().MakeGenericMethod(applyNavigationsResult.state.CurrentParameter.Type);
 
                 return Expression.Call(newMethod, applyOrderingsResult.source, newSelector);
             }
 
-            // TODO: remove all includes
-
             return methodCallExpression.Update(methodCallExpression.Object, new[] { source });
         }
 
-        private Expression ProcessCount(MethodCallExpression methodCallExpression)
+        private Expression ProcessMinMax(MethodCallExpression methodCallExpression)
         {
-            if (methodCallExpression.Method.MethodIsClosedFormOf(LinqMethodHelpers.QueryableCountPredicateMethodInfo))
+            // TODO: hack - this should be resolved when/if we match based on method info
+            if (methodCallExpression.Method.DeclaringType == typeof(Math))
             {
-                return ProcessCount(SimplifyPredicateMethod(methodCallExpression, queryable: true));
-            }
-
-            if (methodCallExpression.Method.MethodIsClosedFormOf(LinqMethodHelpers.EnumerableCountPredicateMethodInfo))
-            {
-                return ProcessCount(SimplifyPredicateMethod(methodCallExpression, queryable: false));
+                return base.VisitMethodCall(methodCallExpression);
             }
 
             var source = VisitSourceExpression(methodCallExpression.Arguments[0]);
+            source = RemoveIncludesFromSource(source);
+            if (methodCallExpression.Arguments.Count == 2)
+            {
+                var selector = methodCallExpression.Arguments[1].UnwrapQuote();
+                AdjustCurrentParameterName(source.State, selector.Parameters[0].Name);
+                var applyNavigationsResult = FindAndApplyNavigations(source.Operand, selector, source.State);
+                var newSelectorBody = new NavigationPropertyUnbindingVisitor(applyNavigationsResult.state.CurrentParameter).Visit(applyNavigationsResult.lambdaBody);
+                var newSelector = Expression.Lambda(newSelectorBody, applyNavigationsResult.state.CurrentParameter);
 
-            // TODO: remove all includes
+                var applyOrderingsResult = ApplyPendingOrderings(applyNavigationsResult.source, applyNavigationsResult.state);
+                var newMethod = methodCallExpression.Method.GetGenericMethodDefinition();
+
+                // TODO: hack
+                if (newMethod.GetGenericArguments().Count() == 2)
+                {
+                    newMethod = newMethod.MakeGenericMethod(applyNavigationsResult.state.CurrentParameter.Type, methodCallExpression.Type);
+                }
+                else
+                {
+                    newMethod = newMethod.MakeGenericMethod(applyNavigationsResult.state.CurrentParameter.Type);
+                }
+
+                return Expression.Call(newMethod, applyOrderingsResult.source, newSelector);
+            }
 
             return methodCallExpression.Update(methodCallExpression.Object, new[] { source });
         }
-
-        private Expression ProcessLongCount(MethodCallExpression methodCallExpression)
-        {
-            if (methodCallExpression.Method.MethodIsClosedFormOf(LinqMethodHelpers.QueryableCountPredicateMethodInfo))
-            {
-                return ProcessLongCount(SimplifyPredicateMethod(methodCallExpression, queryable: true));
-            }
-
-            if (methodCallExpression.Method.MethodIsClosedFormOf(LinqMethodHelpers.EnumerableCountPredicateMethodInfo))
-            {
-                return ProcessLongCount(SimplifyPredicateMethod(methodCallExpression, queryable: false));
-            }
-
-            var source = VisitSourceExpression(methodCallExpression.Arguments[0]);
-
-            // TODO: remove all includes
-
-            return methodCallExpression.Update(methodCallExpression.Object, new[] { source });
-        }
-
 
         private Expression ProcessDistinct(MethodCallExpression methodCallExpression)
         {
@@ -1279,6 +1331,13 @@ namespace Microsoft.EntityFrameworkCore.Query.NavigationExpansion.Visitors
             return new NavigationExpansionExpression(applyOrderingsResult.source, applyOrderingsResult.state, methodCallExpression.Type);
         }
 
+        private Expression ProcessFromRawSql(MethodCallExpression methodCallExpression)
+        {
+            var source = VisitSourceExpression(methodCallExpression.Arguments[0]);
+
+            return new NavigationExpansionExpression(methodCallExpression, source.State, methodCallExpression.Type);
+        }
+
         protected override Expression VisitConstant(ConstantExpression constantExpression)
         {
             if (constantExpression.Value != null
@@ -1371,13 +1430,8 @@ namespace Microsoft.EntityFrameworkCore.Query.NavigationExpansion.Visitors
             {
                 if (sourceMapping.NavigationTree.Flatten().Any(n => n.ExpansionMode == NavigationTreeNodeExpansionMode.ReferencePending))
                 {
-                    foreach (var navigationTree in sourceMapping.NavigationTree.Children)
+                    foreach (var navigationTree in sourceMapping.NavigationTree.Children.Where(n => !n.Navigation.IsCollection()))
                     {
-                        if (navigationTree.Navigation.IsCollection())
-                        {
-                            throw new InvalidOperationException("Collections should not be part of the navigation tree: " + navigationTree.Navigation);
-                        }
-
                         result = AddNavigationJoin(
                             result.source,
                             result.parameter,
@@ -1663,6 +1717,7 @@ namespace Microsoft.EntityFrameworkCore.Query.NavigationExpansion.Visitors
                     }
                 }
 
+                // TODO: also mark include as completed here?
                 navigationTree.ExpansionMode = NavigationTreeNodeExpansionMode.ReferenceComplete;
                 navigationPath.Add(navigation);
             }

@@ -79,7 +79,7 @@ namespace Microsoft.EntityFrameworkCore.Query.NavigationExpansion.Visitors
             if (leftBinding != null
                 && rightBinding != null
                 && leftBinding.NavigationTreeNode.Navigation != rightBinding.NavigationTreeNode.Navigation
-                && (leftBinding.NavigationTreeNode.Navigation.IsCollection() || rightBinding.NavigationTreeNode.Navigation.IsCollection()))
+                && (leftBinding.NavigationTreeNode.Navigation?.IsCollection() == true || rightBinding.NavigationTreeNode.Navigation?.IsCollection() == true))
             {
                 if (leftBinding.NavigationTreeNode.Navigation.IsCollection())
                 {

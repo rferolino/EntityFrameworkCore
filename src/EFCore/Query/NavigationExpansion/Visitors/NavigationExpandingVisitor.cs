@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq.Expressions;
+using System.Reflection;
 using Microsoft.EntityFrameworkCore.Extensions.Internal;
 using Microsoft.EntityFrameworkCore.Internal;
 using Microsoft.EntityFrameworkCore.Metadata;
@@ -42,12 +43,202 @@ namespace Microsoft.EntityFrameworkCore.Query.NavigationExpansion.Visitors
                 return includeExpression;
             }
 
-            if (extensionExpression is NavigationExpansionExpression)
+            if (extensionExpression is NavigationExpansionExpression navigationExpansionExpression)
             {
-                throw new InvalidOperationException("trying to reduce NEE!!!");
+                return navigationExpansionExpression;
             }
 
             return base.VisitExtension(extensionExpression);
+        }
+
+        private Expression ProcessMemberPushdown(
+            Expression source,
+            NavigationExpansionExpression navigationExpansionExpression,
+            bool efProperty,
+            MemberInfo memberInfo,
+            string propertyName,
+            Type resultType)
+        {
+            var selectorParameter = Expression.Parameter(source.Type, navigationExpansionExpression.State.CurrentParameter.Name);
+
+            var selectorBody = efProperty
+                ? (Expression)Expression.Call(EF.PropertyMethod.MakeGenericMethod(resultType),
+                    selectorParameter,
+                    Expression.Constant(propertyName))
+                : Expression.MakeMemberAccess(selectorParameter, memberInfo);
+
+            // TODO: do we need to check methods with predicate, or are they guaranteed to be optimized into Where().Method()?
+            if (navigationExpansionExpression.State.PendingCardinalityReducingOperator.MethodIsClosedFormOf(LinqMethodHelpers.QueryableFirstOrDefaultMethodInfo)
+                || navigationExpansionExpression.State.PendingCardinalityReducingOperator.MethodIsClosedFormOf(LinqMethodHelpers.QueryableFirstOrDefaultPredicateMethodInfo)
+                || navigationExpansionExpression.State.PendingCardinalityReducingOperator.MethodIsClosedFormOf(LinqMethodHelpers.QueryableSingleOrDefaultMethodInfo)
+                || navigationExpansionExpression.State.PendingCardinalityReducingOperator.MethodIsClosedFormOf(LinqMethodHelpers.QueryableSingleOrDefaultPredicateMethodInfo)
+                || navigationExpansionExpression.State.PendingCardinalityReducingOperator.MethodIsClosedFormOf(LinqMethodHelpers.EnumerableFirstOrDefaultMethodInfo)
+                || navigationExpansionExpression.State.PendingCardinalityReducingOperator.MethodIsClosedFormOf(LinqMethodHelpers.EnumerableFirstOrDefaultPredicateMethodInfo)
+                || navigationExpansionExpression.State.PendingCardinalityReducingOperator.MethodIsClosedFormOf(LinqMethodHelpers.EnumerableSingleOrDefaultMethodInfo)
+                || navigationExpansionExpression.State.PendingCardinalityReducingOperator.MethodIsClosedFormOf(LinqMethodHelpers.EnumerableSingleOrDefaultPredicateMethodInfo))
+            {
+                if (!selectorBody.Type.IsNullableType())
+                {
+                    selectorBody = Expression.Convert(selectorBody, selectorBody.Type.MakeNullable());
+                }
+            }
+
+            var selector = Expression.Lambda(selectorBody, selectorParameter);
+
+            var remappedSelectorBody = ExpressionExtensions.CombineAndRemapLambdas(navigationExpansionExpression.State.PendingSelector, selector, selectorParameter).Body;
+
+            var binder = new NavigationPropertyBindingVisitor(
+                navigationExpansionExpression.State.CurrentParameter,
+                navigationExpansionExpression.State.SourceMappings);
+
+            var boundSelectorBody = binder.Visit(remappedSelectorBody);
+            if (boundSelectorBody is NavigationBindingExpression navigationBindingExpression
+                && navigationBindingExpression.NavigationTreeNode.Navigation is INavigation lastNavigation
+                && lastNavigation != null)
+            {
+                if (lastNavigation.IsCollection())
+                {
+                    var foo = 1;
+                    if (foo == 1)
+                    {
+                        throw new InvalidOperationException("fgdfg");
+                    }
+
+                    var collectionNavigationElementType = lastNavigation.ForeignKey.DeclaringEntityType.ClrType;
+                    var entityQueryable = NullAsyncQueryProvider.Instance.CreateEntityQueryableExpression(collectionNavigationElementType);
+                    var outerParameter = Expression.Parameter(collectionNavigationElementType, collectionNavigationElementType.GenerateParameterName());
+
+                    var outerKeyAccess = NavigationExpansionHelpers.CreateKeyAccessExpression(
+                        outerParameter,
+                        lastNavigation.ForeignKey.Properties);
+
+                    var innerParameter = Expression.Parameter(navigationExpansionExpression.Type);
+                    var innerKeyAccessLambda = Expression.Lambda(
+                        NavigationExpansionHelpers.CreateKeyAccessExpression(
+                            innerParameter,
+                            lastNavigation.ForeignKey.PrincipalKey.Properties),
+                        innerParameter);
+
+                    var combinedKeySelectorBody = ExpressionExtensions.CombineAndRemapLambdas(navigationExpansionExpression.State.PendingSelector, innerKeyAccessLambda).Body;
+
+                    // TODO: properly compare combinedKeySelectorBody with outerKeyAccess for nullability match
+                    if (outerKeyAccess.Type != combinedKeySelectorBody.Type)
+                    {
+                        if (combinedKeySelectorBody.Type.IsNullableType())
+                        {
+                            outerKeyAccess = Expression.Convert(outerKeyAccess, combinedKeySelectorBody.Type);
+                        }
+                        else
+                        {
+                            combinedKeySelectorBody = Expression.Convert(combinedKeySelectorBody, outerKeyAccess.Type);
+                        }
+                    }
+
+                    var rewrittenState = new NavigationExpansionExpressionState(
+                        navigationExpansionExpression.State.CurrentParameter,
+                        navigationExpansionExpression.State.SourceMappings,
+                        Expression.Lambda(combinedKeySelectorBody, navigationExpansionExpression.State.CurrentParameter),
+                        applyPendingSelector: true,
+                        navigationExpansionExpression.State.PendingOrderings,
+                        navigationExpansionExpression.State.PendingIncludeChain,
+                        navigationExpansionExpression.State.PendingCardinalityReducingOperator,
+                        navigationExpansionExpression.State.CustomRootMappings,
+                        materializeCollectionNavigation: null
+                    /*navigationExpansionExpression.State.NestedExpansionMappings*/);
+
+                    var rewrittenNavigationExpansionExpression = new NavigationExpansionExpression(navigationExpansionExpression.Operand, rewrittenState, combinedKeySelectorBody.Type);
+                    var inner = new NavigationExpansionReducingVisitor().Visit(rewrittenNavigationExpansionExpression);
+
+                    var predicate = Expression.Lambda(
+                        Expression.Equal(outerKeyAccess, inner),
+                        outerParameter);
+
+                    var whereMethodInfo = LinqMethodHelpers.QueryableWhereMethodInfo.MakeGenericMethod(collectionNavigationElementType);
+                    var rewritten = Expression.Call(
+                        whereMethodInfo,
+                        entityQueryable,
+                        predicate);
+
+                    var entityType = lastNavigation.ForeignKey.DeclaringEntityType;
+
+                    // TODO: copied from visit constant - DRY !!!!
+                    var sourceMapping = new SourceMapping
+                    {
+                        RootEntityType = entityType,
+                    };
+
+                    var navigationTreeRoot = NavigationTreeNode.CreateRoot(sourceMapping, fromMapping: new List<string>(), optional: false);
+                    sourceMapping.NavigationTree = navigationTreeRoot;
+
+                    var pendingSelectorParameter = Expression.Parameter(entityType.ClrType);
+                    var pendingSelector = Expression.Lambda(
+                        new NavigationBindingExpression(
+                            pendingSelectorParameter,
+                            navigationTreeRoot,
+                            entityType,
+                            sourceMapping,
+                            pendingSelectorParameter.Type),
+                        pendingSelectorParameter);
+
+                    // TODO: should we compensate for nullability difference here also?
+                    return new NavigationExpansionExpression(
+                        rewritten,
+                        new NavigationExpansionExpressionState(
+                            pendingSelectorParameter,
+                            new List<SourceMapping> { sourceMapping },
+                            pendingSelector,
+                            applyPendingSelector: false,
+                            new List<(System.Reflection.MethodInfo method, LambdaExpression keySelector)>(),
+                            pendingIncludeChain: null,
+                            pendingCardinalityReducingOperator: null, // TODO: incorrect?
+                            customRootMappings: new List<List<string>>(),
+                            materializeCollectionNavigation: null
+                        /*nestedExpansionMappings: new List<NestedExpansionMapping>()*/),
+                        rewritten.Type);
+                }
+                else
+                {
+                    return ProcessSelectCore(
+                        navigationExpansionExpression.Operand,
+                        navigationExpansionExpression.State,
+                        selector,
+                        selectorBody.Type);
+                }
+            }
+
+            // TODO idk if thats needed
+            var newState = new NavigationExpansionExpressionState(
+                navigationExpansionExpression.State.CurrentParameter,
+                navigationExpansionExpression.State.SourceMappings,
+                Expression.Lambda(boundSelectorBody, navigationExpansionExpression.State.CurrentParameter),
+                applyPendingSelector: true,
+                navigationExpansionExpression.State.PendingOrderings,
+                navigationExpansionExpression.State.PendingIncludeChain,
+                navigationExpansionExpression.State.PendingCardinalityReducingOperator,
+                navigationExpansionExpression.State.CustomRootMappings,
+                navigationExpansionExpression.State.MaterializeCollectionNavigation
+                /*navigationExpansionExpression.State.NestedExpansionMappings*/);
+
+            // TODO: expand navigations
+
+            var result = new NavigationExpansionExpression(
+                navigationExpansionExpression.Operand,
+                newState,
+                //memberExpression.Type);
+                selectorBody.Type);
+
+            return resultType != result.Type
+                ? (Expression)Expression.Convert(result, resultType)
+                : result;
+
+            //// TODO: which one is better: "(bool)expression " or "expression == true"
+            //return memberExpression.Type == typeof(bool) && result.Type == typeof(bool?)
+            //  ? (Expression)Expression.Convert(result, typeof(bool))
+            //  : result;
+
+            //return memberExpression.Type == typeof(bool) && result.Type == typeof(bool?)
+            //    ? (Expression)Expression.Equal(result, Expression.Constant(true, typeof(bool?)))
+            //    : result;
         }
 
         protected override Expression VisitMember(MemberExpression memberExpression)
@@ -56,182 +247,184 @@ namespace Microsoft.EntityFrameworkCore.Query.NavigationExpansion.Visitors
             if (newExpression is NavigationExpansionExpression navigationExpansionExpression
                 && navigationExpansionExpression.State.PendingCardinalityReducingOperator != null)
             {
-                var selectorParameter = Expression.Parameter(newExpression.Type, navigationExpansionExpression.State.CurrentParameter.Name);
-                var selectorBody = (Expression)Expression.MakeMemberAccess(selectorParameter, memberExpression.Member);
+                return ProcessMemberPushdown(newExpression, navigationExpansionExpression, efProperty: false, memberExpression.Member, propertyName: null, memberExpression.Type);
 
-                // TODO: do we need to check methods with predicate, or are they guaranteed to be optimized into Where().Method()?
-                if (navigationExpansionExpression.State.PendingCardinalityReducingOperator.MethodIsClosedFormOf(LinqMethodHelpers.QueryableFirstOrDefaultMethodInfo)
-                    || navigationExpansionExpression.State.PendingCardinalityReducingOperator.MethodIsClosedFormOf(LinqMethodHelpers.QueryableFirstOrDefaultPredicateMethodInfo)
-                    || navigationExpansionExpression.State.PendingCardinalityReducingOperator.MethodIsClosedFormOf(LinqMethodHelpers.QueryableSingleOrDefaultMethodInfo)
-                    || navigationExpansionExpression.State.PendingCardinalityReducingOperator.MethodIsClosedFormOf(LinqMethodHelpers.QueryableSingleOrDefaultPredicateMethodInfo)
-                    || navigationExpansionExpression.State.PendingCardinalityReducingOperator.MethodIsClosedFormOf(LinqMethodHelpers.EnumerableFirstOrDefaultMethodInfo)
-                    || navigationExpansionExpression.State.PendingCardinalityReducingOperator.MethodIsClosedFormOf(LinqMethodHelpers.EnumerableFirstOrDefaultPredicateMethodInfo)
-                    || navigationExpansionExpression.State.PendingCardinalityReducingOperator.MethodIsClosedFormOf(LinqMethodHelpers.EnumerableSingleOrDefaultMethodInfo)
-                    || navigationExpansionExpression.State.PendingCardinalityReducingOperator.MethodIsClosedFormOf(LinqMethodHelpers.EnumerableSingleOrDefaultPredicateMethodInfo))
-                {
-                    if (!selectorBody.Type.IsNullableType())
-                    {
-                        selectorBody = Expression.Convert(selectorBody, selectorBody.Type.MakeNullable());
-                    }
-                }
+                //var selectorParameter = Expression.Parameter(newExpression.Type, navigationExpansionExpression.State.CurrentParameter.Name);
+                //var selectorBody = (Expression)Expression.MakeMemberAccess(selectorParameter, memberExpression.Member);
 
-                var selector = Expression.Lambda(selectorBody, selectorParameter);
+                //// TODO: do we need to check methods with predicate, or are they guaranteed to be optimized into Where().Method()?
+                //if (navigationExpansionExpression.State.PendingCardinalityReducingOperator.MethodIsClosedFormOf(LinqMethodHelpers.QueryableFirstOrDefaultMethodInfo)
+                //    || navigationExpansionExpression.State.PendingCardinalityReducingOperator.MethodIsClosedFormOf(LinqMethodHelpers.QueryableFirstOrDefaultPredicateMethodInfo)
+                //    || navigationExpansionExpression.State.PendingCardinalityReducingOperator.MethodIsClosedFormOf(LinqMethodHelpers.QueryableSingleOrDefaultMethodInfo)
+                //    || navigationExpansionExpression.State.PendingCardinalityReducingOperator.MethodIsClosedFormOf(LinqMethodHelpers.QueryableSingleOrDefaultPredicateMethodInfo)
+                //    || navigationExpansionExpression.State.PendingCardinalityReducingOperator.MethodIsClosedFormOf(LinqMethodHelpers.EnumerableFirstOrDefaultMethodInfo)
+                //    || navigationExpansionExpression.State.PendingCardinalityReducingOperator.MethodIsClosedFormOf(LinqMethodHelpers.EnumerableFirstOrDefaultPredicateMethodInfo)
+                //    || navigationExpansionExpression.State.PendingCardinalityReducingOperator.MethodIsClosedFormOf(LinqMethodHelpers.EnumerableSingleOrDefaultMethodInfo)
+                //    || navigationExpansionExpression.State.PendingCardinalityReducingOperator.MethodIsClosedFormOf(LinqMethodHelpers.EnumerableSingleOrDefaultPredicateMethodInfo))
+                //{
+                //    if (!selectorBody.Type.IsNullableType())
+                //    {
+                //        selectorBody = Expression.Convert(selectorBody, selectorBody.Type.MakeNullable());
+                //    }
+                //}
 
-                var remappedSelectorBody = ExpressionExtensions.CombineAndRemapLambdas(navigationExpansionExpression.State.PendingSelector, selector, selectorParameter).Body;
+                //var selector = Expression.Lambda(selectorBody, selectorParameter);
 
-                var binder = new NavigationPropertyBindingVisitor(
-                    navigationExpansionExpression.State.CurrentParameter,
-                    navigationExpansionExpression.State.SourceMappings);
+                //var remappedSelectorBody = ExpressionExtensions.CombineAndRemapLambdas(navigationExpansionExpression.State.PendingSelector, selector, selectorParameter).Body;
 
-                var boundSelectorBody = binder.Visit(remappedSelectorBody);
-                if (boundSelectorBody is NavigationBindingExpression navigationBindingExpression
-                    && navigationBindingExpression.NavigationTreeNode.Navigation is INavigation lastNavigation
-                    && lastNavigation != null)
-                {
-                    if (lastNavigation.IsCollection())
-                    {
-                        var foo = 1;
-                        if (foo == 1)
-                        {
-                            throw new InvalidOperationException("fgdfg");
-                        }
+                //var binder = new NavigationPropertyBindingVisitor(
+                //    navigationExpansionExpression.State.CurrentParameter,
+                //    navigationExpansionExpression.State.SourceMappings);
 
-                        var collectionNavigationElementType = lastNavigation.ForeignKey.DeclaringEntityType.ClrType;
-                        var entityQueryable = NullAsyncQueryProvider.Instance.CreateEntityQueryableExpression(collectionNavigationElementType);
-                        var outerParameter = Expression.Parameter(collectionNavigationElementType, collectionNavigationElementType.GenerateParameterName());
+                //var boundSelectorBody = binder.Visit(remappedSelectorBody);
+                //if (boundSelectorBody is NavigationBindingExpression navigationBindingExpression
+                //    && navigationBindingExpression.NavigationTreeNode.Navigation is INavigation lastNavigation
+                //    && lastNavigation != null)
+                //{
+                //    if (lastNavigation.IsCollection())
+                //    {
+                //        var foo = 1;
+                //        if (foo == 1)
+                //        {
+                //            throw new InvalidOperationException("fgdfg");
+                //        }
 
-                        var outerKeyAccess = NavigationExpansionHelpers.CreateKeyAccessExpression(
-                            outerParameter,
-                            lastNavigation.ForeignKey.Properties);
+                //        var collectionNavigationElementType = lastNavigation.ForeignKey.DeclaringEntityType.ClrType;
+                //        var entityQueryable = NullAsyncQueryProvider.Instance.CreateEntityQueryableExpression(collectionNavigationElementType);
+                //        var outerParameter = Expression.Parameter(collectionNavigationElementType, collectionNavigationElementType.GenerateParameterName());
 
-                        var innerParameter = Expression.Parameter(navigationExpansionExpression.Type);
-                        var innerKeyAccessLambda = Expression.Lambda(
-                            NavigationExpansionHelpers.CreateKeyAccessExpression(
-                                innerParameter,
-                                lastNavigation.ForeignKey.PrincipalKey.Properties),
-                            innerParameter);
+                //        var outerKeyAccess = NavigationExpansionHelpers.CreateKeyAccessExpression(
+                //            outerParameter,
+                //            lastNavigation.ForeignKey.Properties);
 
-                        var combinedKeySelectorBody = ExpressionExtensions.CombineAndRemapLambdas(navigationExpansionExpression.State.PendingSelector, innerKeyAccessLambda).Body;
+                //        var innerParameter = Expression.Parameter(navigationExpansionExpression.Type);
+                //        var innerKeyAccessLambda = Expression.Lambda(
+                //            NavigationExpansionHelpers.CreateKeyAccessExpression(
+                //                innerParameter,
+                //                lastNavigation.ForeignKey.PrincipalKey.Properties),
+                //            innerParameter);
 
-                        // TODO: properly compare combinedKeySelectorBody with outerKeyAccess for nullability match
-                        if (outerKeyAccess.Type != combinedKeySelectorBody.Type)
-                        {
-                            if (combinedKeySelectorBody.Type.IsNullableType())
-                            {
-                                outerKeyAccess = Expression.Convert(outerKeyAccess, combinedKeySelectorBody.Type);
-                            }
-                            else
-                            {
-                                combinedKeySelectorBody = Expression.Convert(combinedKeySelectorBody, outerKeyAccess.Type);
-                            }
-                        }
+                //        var combinedKeySelectorBody = ExpressionExtensions.CombineAndRemapLambdas(navigationExpansionExpression.State.PendingSelector, innerKeyAccessLambda).Body;
 
-                        var rewrittenState = new NavigationExpansionExpressionState(
-                            navigationExpansionExpression.State.CurrentParameter,
-                            navigationExpansionExpression.State.SourceMappings,
-                            Expression.Lambda(combinedKeySelectorBody, navigationExpansionExpression.State.CurrentParameter),
-                            applyPendingSelector: true,
-                            navigationExpansionExpression.State.PendingOrderings,
-                            navigationExpansionExpression.State.PendingIncludeChain,
-                            navigationExpansionExpression.State.PendingCardinalityReducingOperator,
-                            navigationExpansionExpression.State.CustomRootMappings,
-                            materializeCollectionNavigation: null
-                        /*navigationExpansionExpression.State.NestedExpansionMappings*/);
+                //        // TODO: properly compare combinedKeySelectorBody with outerKeyAccess for nullability match
+                //        if (outerKeyAccess.Type != combinedKeySelectorBody.Type)
+                //        {
+                //            if (combinedKeySelectorBody.Type.IsNullableType())
+                //            {
+                //                outerKeyAccess = Expression.Convert(outerKeyAccess, combinedKeySelectorBody.Type);
+                //            }
+                //            else
+                //            {
+                //                combinedKeySelectorBody = Expression.Convert(combinedKeySelectorBody, outerKeyAccess.Type);
+                //            }
+                //        }
 
-                        var rewrittenNavigationExpansionExpression = new NavigationExpansionExpression(navigationExpansionExpression.Operand, rewrittenState, combinedKeySelectorBody.Type);
-                        var inner = new NavigationExpansionReducingVisitor().Visit(rewrittenNavigationExpansionExpression);
+                //        var rewrittenState = new NavigationExpansionExpressionState(
+                //            navigationExpansionExpression.State.CurrentParameter,
+                //            navigationExpansionExpression.State.SourceMappings,
+                //            Expression.Lambda(combinedKeySelectorBody, navigationExpansionExpression.State.CurrentParameter),
+                //            applyPendingSelector: true,
+                //            navigationExpansionExpression.State.PendingOrderings,
+                //            navigationExpansionExpression.State.PendingIncludeChain,
+                //            navigationExpansionExpression.State.PendingCardinalityReducingOperator,
+                //            navigationExpansionExpression.State.CustomRootMappings,
+                //            materializeCollectionNavigation: null
+                //        /*navigationExpansionExpression.State.NestedExpansionMappings*/);
 
-                        var predicate = Expression.Lambda(
-                            Expression.Equal(outerKeyAccess, inner),
-                            outerParameter);
+                //        var rewrittenNavigationExpansionExpression = new NavigationExpansionExpression(navigationExpansionExpression.Operand, rewrittenState, combinedKeySelectorBody.Type);
+                //        var inner = new NavigationExpansionReducingVisitor().Visit(rewrittenNavigationExpansionExpression);
 
-                        var whereMethodInfo = LinqMethodHelpers.QueryableWhereMethodInfo.MakeGenericMethod(collectionNavigationElementType);
-                        var rewritten = Expression.Call(
-                            whereMethodInfo,
-                            entityQueryable,
-                            predicate);
+                //        var predicate = Expression.Lambda(
+                //            Expression.Equal(outerKeyAccess, inner),
+                //            outerParameter);
 
-                        var entityType = lastNavigation.ForeignKey.DeclaringEntityType;
+                //        var whereMethodInfo = LinqMethodHelpers.QueryableWhereMethodInfo.MakeGenericMethod(collectionNavigationElementType);
+                //        var rewritten = Expression.Call(
+                //            whereMethodInfo,
+                //            entityQueryable,
+                //            predicate);
 
-                        // TODO: copied from visit constant - DRY !!!!
-                        var sourceMapping = new SourceMapping
-                        {
-                            RootEntityType = entityType,
-                        };
+                //        var entityType = lastNavigation.ForeignKey.DeclaringEntityType;
 
-                        var navigationTreeRoot = NavigationTreeNode.CreateRoot(sourceMapping, fromMapping: new List<string>(), optional: false);
-                        sourceMapping.NavigationTree = navigationTreeRoot;
+                //        // TODO: copied from visit constant - DRY !!!!
+                //        var sourceMapping = new SourceMapping
+                //        {
+                //            RootEntityType = entityType,
+                //        };
 
-                        var pendingSelectorParameter = Expression.Parameter(entityType.ClrType);
-                        var pendingSelector = Expression.Lambda(
-                            new NavigationBindingExpression(
-                                pendingSelectorParameter,
-                                navigationTreeRoot,
-                                entityType,
-                                sourceMapping,
-                                pendingSelectorParameter.Type),
-                            pendingSelectorParameter);
+                //        var navigationTreeRoot = NavigationTreeNode.CreateRoot(sourceMapping, fromMapping: new List<string>(), optional: false);
+                //        sourceMapping.NavigationTree = navigationTreeRoot;
 
-                        // TODO: should we compensate for nullability difference here also?
-                        return new NavigationExpansionExpression(
-                            rewritten,
-                            new NavigationExpansionExpressionState(
-                                pendingSelectorParameter,
-                                new List<SourceMapping> { sourceMapping },
-                                pendingSelector,
-                                applyPendingSelector: false,
-                                new List<(System.Reflection.MethodInfo method, LambdaExpression keySelector)>(),
-                                pendingIncludeChain: null,
-                                pendingCardinalityReducingOperator: null, // TODO: incorrect?
-                                customRootMappings: new List<List<string>>(),
-                                materializeCollectionNavigation: null
-                            /*nestedExpansionMappings: new List<NestedExpansionMapping>()*/),
-                            rewritten.Type);
-                    }
-                    else
-                    {
-                        return ProcessSelectCore(
-                            navigationExpansionExpression.Operand,
-                            navigationExpansionExpression.State,
-                            selector,
-                            selectorBody.Type);
-                            //memberExpression.Type);
-                    }
-                }
+                //        var pendingSelectorParameter = Expression.Parameter(entityType.ClrType);
+                //        var pendingSelector = Expression.Lambda(
+                //            new NavigationBindingExpression(
+                //                pendingSelectorParameter,
+                //                navigationTreeRoot,
+                //                entityType,
+                //                sourceMapping,
+                //                pendingSelectorParameter.Type),
+                //            pendingSelectorParameter);
 
-                // TODO idk if thats needed
-                var newState = new NavigationExpansionExpressionState(
-                    navigationExpansionExpression.State.CurrentParameter,
-                    navigationExpansionExpression.State.SourceMappings,
-                    Expression.Lambda(boundSelectorBody, navigationExpansionExpression.State.CurrentParameter),
-                    applyPendingSelector: true,
-                    navigationExpansionExpression.State.PendingOrderings,
-                    navigationExpansionExpression.State.PendingIncludeChain,
-                    navigationExpansionExpression.State.PendingCardinalityReducingOperator,
-                    navigationExpansionExpression.State.CustomRootMappings,
-                    navigationExpansionExpression.State.MaterializeCollectionNavigation
-                    /*navigationExpansionExpression.State.NestedExpansionMappings*/);
+                //        // TODO: should we compensate for nullability difference here also?
+                //        return new NavigationExpansionExpression(
+                //            rewritten,
+                //            new NavigationExpansionExpressionState(
+                //                pendingSelectorParameter,
+                //                new List<SourceMapping> { sourceMapping },
+                //                pendingSelector,
+                //                applyPendingSelector: false,
+                //                new List<(System.Reflection.MethodInfo method, LambdaExpression keySelector)>(),
+                //                pendingIncludeChain: null,
+                //                pendingCardinalityReducingOperator: null, // TODO: incorrect?
+                //                customRootMappings: new List<List<string>>(),
+                //                materializeCollectionNavigation: null
+                //            /*nestedExpansionMappings: new List<NestedExpansionMapping>()*/),
+                //            rewritten.Type);
+                //    }
+                //    else
+                //    {
+                //        return ProcessSelectCore(
+                //            navigationExpansionExpression.Operand,
+                //            navigationExpansionExpression.State,
+                //            selector,
+                //            selectorBody.Type);
+                //            //memberExpression.Type);
+                //    }
+                //}
 
-                // TODO: expand navigations
+                //// TODO idk if thats needed
+                //var newState = new NavigationExpansionExpressionState(
+                //    navigationExpansionExpression.State.CurrentParameter,
+                //    navigationExpansionExpression.State.SourceMappings,
+                //    Expression.Lambda(boundSelectorBody, navigationExpansionExpression.State.CurrentParameter),
+                //    applyPendingSelector: true,
+                //    navigationExpansionExpression.State.PendingOrderings,
+                //    navigationExpansionExpression.State.PendingIncludeChain,
+                //    navigationExpansionExpression.State.PendingCardinalityReducingOperator,
+                //    navigationExpansionExpression.State.CustomRootMappings,
+                //    navigationExpansionExpression.State.MaterializeCollectionNavigation
+                //    /*navigationExpansionExpression.State.NestedExpansionMappings*/);
 
-                var result = new NavigationExpansionExpression(
-                    navigationExpansionExpression.Operand,
-                    newState,
-                    //memberExpression.Type);
-                    selectorBody.Type);
+                //// TODO: expand navigations
 
-                return memberExpression.Type != result.Type
-                    ? (Expression)Expression.Convert(result, memberExpression.Type)
-                    : result;
+                //var result = new NavigationExpansionExpression(
+                //    navigationExpansionExpression.Operand,
+                //    newState,
+                //    //memberExpression.Type);
+                //    selectorBody.Type);
 
-                //// TODO: which one is better: "(bool)expression " or "expression == true"
-                //return memberExpression.Type == typeof(bool) && result.Type == typeof(bool?)
-                //  ? (Expression)Expression.Convert(result, typeof(bool))
-                //  : result;
-
-                //return memberExpression.Type == typeof(bool) && result.Type == typeof(bool?)
-                //    ? (Expression)Expression.Equal(result, Expression.Constant(true, typeof(bool?)))
+                //return memberExpression.Type != result.Type
+                //    ? (Expression)Expression.Convert(result, memberExpression.Type)
                 //    : result;
+
+                ////// TODO: which one is better: "(bool)expression " or "expression == true"
+                ////return memberExpression.Type == typeof(bool) && result.Type == typeof(bool?)
+                ////  ? (Expression)Expression.Convert(result, typeof(bool))
+                ////  : result;
+
+                ////return memberExpression.Type == typeof(bool) && result.Type == typeof(bool?)
+                ////    ? (Expression)Expression.Equal(result, Expression.Constant(true, typeof(bool?)))
+                ////    : result;
             }
 
             return base.VisitMember(memberExpression);

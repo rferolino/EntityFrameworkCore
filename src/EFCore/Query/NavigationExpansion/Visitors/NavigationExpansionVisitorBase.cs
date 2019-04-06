@@ -1,7 +1,9 @@
 ﻿// Copyright (c) .NET Foundation. All rights reserved.
 // Licensed under the Apache License, Version 2.0. See License.txt in the project root for license information.
 
+using System.Collections.Generic;
 using System.Linq.Expressions;
+using System.Reflection;
 using Microsoft.EntityFrameworkCore.Query.Expressions.Internal;
 
 namespace Microsoft.EntityFrameworkCore.Query.NavigationExpansion.Visitors
@@ -45,11 +47,13 @@ namespace Microsoft.EntityFrameworkCore.Query.NavigationExpansion.Visitors
             if (extensionExpression is NavigationExpansionExpression navigationExpansionExpression)
             {
                 var newOperand = Visit(navigationExpansionExpression.Operand);
+                var newState = ReplaceNavigationExpansionExpressionState(navigationExpansionExpression.State);
 
                 return newOperand != navigationExpansionExpression.Operand
+                    || newState != navigationExpansionExpression.State
                     ? new NavigationExpansionExpression(
                         newOperand,
-                        navigationExpansionExpression.State,
+                        newState,
                         navigationExpansionExpression.Type)
                     : navigationExpansionExpression;
             }
@@ -98,5 +102,71 @@ namespace Microsoft.EntityFrameworkCore.Query.NavigationExpansion.Visitors
 
             throw new System.InvalidOperationException("Unhandled operator: " + extensionExpression);
         }
+
+        private NavigationExpansionExpressionState ReplaceNavigationExpansionExpressionState(NavigationExpansionExpressionState state)
+        {
+            var newCurrentParameter = (ParameterExpression)Visit(state.CurrentParameter);
+            var newPendingSelectorBody = Visit(state.PendingSelector.Body);
+            var newPendingSelector = (LambdaExpression)Visit(state.PendingSelector);
+            var pendingOrderingsChanged = false;
+            var newPendingOrderings = new List<(MethodInfo method, LambdaExpression keySelector)>();
+
+            foreach (var pendingOrdering in state.PendingOrderings)
+            {
+                var newPendingOrderingKeySelector = (LambdaExpression)Visit(pendingOrdering.keySelector);
+                if (newPendingOrderingKeySelector != pendingOrdering.keySelector)
+                {
+                    newPendingOrderings.Add((pendingOrdering.method, keySelector: newPendingOrderingKeySelector));
+                    pendingOrderingsChanged = true;
+                }
+                else
+                {
+                    newPendingOrderings.Add(pendingOrdering);
+                }
+            }
+
+            var newPendingIncludeChain = (NavigationBindingExpression)Visit(state.PendingIncludeChain);
+
+            if (newCurrentParameter != state.CurrentParameter
+                || newPendingSelector != state.PendingSelector
+                || pendingOrderingsChanged
+                || newPendingIncludeChain != state.PendingIncludeChain)
+            {
+                return new NavigationExpansionExpressionState(
+                    newCurrentParameter,
+                    state.SourceMappings,
+                    newPendingSelector,
+                    state.ApplyPendingSelector,
+                    newPendingOrderings,
+                    newPendingIncludeChain,
+                    state.PendingCardinalityReducingOperator,
+                    state.CustomRootMappings,
+                    state.MaterializeCollectionNavigation);
+            }
+
+            return state;
+        }
+
+        //protected override Expression VisitLambda<T>(Expression<T> lambdaExpression)
+        //{
+        //    var newParameters = new List<ParameterExpression>();
+        //    var parameterChanged = false;
+
+        //    foreach (var parameter in lambdaExpression.Parameters)
+        //    {
+        //        var newParameter = (ParameterExpression)Visit(parameter);
+        //        newParameters.Add(newParameter);
+        //        if (newParameter != parameter)
+        //        {
+        //            parameterChanged = true;
+        //        }
+        //    }
+
+        //    var newBody = Visit(lambdaExpression.Body);
+
+        //    return parameterChanged || newBody != lambdaExpression.Body
+        //        ? Expression.Lambda(newBody, newParameters)
+        //        : lambdaExpression;
+        //}
     }
 }

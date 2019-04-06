@@ -30,19 +30,19 @@ namespace Microsoft.EntityFrameworkCore.Query.NavigationExpansion
 
         public void Print([NotNull] ExpressionPrinter expressionPrinter)
         {
-            //expressionPrinter.StringBuilder.AppendLine("Include(");
-            //expressionPrinter.StringBuilder.IncrementIndent();
-            //expressionPrinter.Visit(EntityExpression);
-            //expressionPrinter.StringBuilder.AppendLine(", ");
-            //expressionPrinter.Visit(NavigationExpression);
-            //expressionPrinter.StringBuilder.AppendLine(")");
-            //expressionPrinter.StringBuilder.DecrementIndent();
-
-            expressionPrinter.StringBuilder.Append("Include(");
+            expressionPrinter.StringBuilder.AppendLine("Include(");
+            expressionPrinter.StringBuilder.IncrementIndent();
             expressionPrinter.Visit(EntityExpression);
-            expressionPrinter.StringBuilder.Append(".");
+            expressionPrinter.StringBuilder.AppendLine(", ");
             expressionPrinter.Visit(NavigationExpression);
-            expressionPrinter.StringBuilder.Append(")");
+            expressionPrinter.StringBuilder.AppendLine(")");
+            expressionPrinter.StringBuilder.DecrementIndent();
+
+            //expressionPrinter.StringBuilder.Append("Include(");
+            //expressionPrinter.Visit(EntityExpression);
+            //expressionPrinter.StringBuilder.Append(".");
+            //expressionPrinter.Visit(NavigationExpression);
+            //expressionPrinter.StringBuilder.Append(")");
         }
     }
 }

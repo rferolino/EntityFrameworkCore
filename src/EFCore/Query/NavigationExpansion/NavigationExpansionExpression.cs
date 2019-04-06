@@ -150,7 +150,8 @@ namespace Microsoft.EntityFrameworkCore.Query.NavigationExpansion
                         pendingIncludeNode.Value,
                         pendingIncludeNode.Key,
                         State,
-                        new List<INavigation>());
+                        new List<INavigation>(),
+                        include: true);
                 }
 
                 var pendingSelector = State.PendingSelector;
@@ -183,9 +184,13 @@ namespace Microsoft.EntityFrameworkCore.Query.NavigationExpansion
             SourceMapping sourceMapping,
             NavigationTreeNode navigationTree,
             NavigationExpansionExpressionState state,
-            List<INavigation> navigationPath)
+            List<INavigation> navigationPath,
+            bool include)
         {
-            if (navigationTree.ExpansionMode == NavigationTreeNodeExpansionMode.ReferencePending)
+            var joinNeeded = include
+                ? navigationTree.Included == NavigationTreeNodeIncludeMode.ReferencePending
+                : navigationTree.ExpansionMode == NavigationTreeNodeExpansionMode.ReferencePending;
+            if (joinNeeded)
             {
                 // TODO: hack - if we wrapped collection around MaterializeCollectionNavigation during collection rewrite, unwrap that call when applying navigations on top
                 if (sourceExpression is MethodCallExpression sourceMethodCall
@@ -389,7 +394,12 @@ namespace Microsoft.EntityFrameworkCore.Query.NavigationExpansion
                 navigationTree.ToMapping.Insert(0, nameof(TransparentIdentifier<object, object>.Inner));
                 foreach (var mapping in state.SourceMappings)
                 {
-                    foreach (var navigationTreeNode in mapping.NavigationTree.Flatten().Where(n => n.ExpansionMode == NavigationTreeNodeExpansionMode.ReferenceComplete && n != navigationTree))
+                    // TODO: this is very hacky - combine those two enums
+                    var nodes = include
+                        ? mapping.NavigationTree.Flatten().Where(n => (n.Included == NavigationTreeNodeIncludeMode.ReferenceComplete || n.ExpansionMode == NavigationTreeNodeExpansionMode.ReferenceComplete) && n != navigationTree)
+                        : mapping.NavigationTree.Flatten().Where(n => n.ExpansionMode == NavigationTreeNodeExpansionMode.ReferenceComplete && n != navigationTree);
+
+                    foreach (var navigationTreeNode in nodes)
                     {
                         navigationTreeNode.ToMapping.Insert(0, nameof(TransparentIdentifier<object, object>.Outer));
                         if (navigationTree.Optional)
@@ -408,7 +418,15 @@ namespace Microsoft.EntityFrameworkCore.Query.NavigationExpansion
                     }
                 }
 
-                navigationTree.ExpansionMode = NavigationTreeNodeExpansionMode.ReferenceComplete;
+                if (include)
+                {
+                    navigationTree.Included = NavigationTreeNodeIncludeMode.ReferenceComplete;
+                }
+                else
+                {
+                    navigationTree.ExpansionMode = NavigationTreeNodeExpansionMode.ReferenceComplete;
+
+                }
                 navigationPath.Add(navigation);
             }
             else
@@ -425,7 +443,8 @@ namespace Microsoft.EntityFrameworkCore.Query.NavigationExpansion
                     sourceMapping,
                     child,
                     state,
-                    navigationPath.ToList());
+                    navigationPath.ToList(),
+                    include);
             }
 
             return result;

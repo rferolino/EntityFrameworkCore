@@ -528,7 +528,7 @@ namespace Microsoft.EntityFrameworkCore.Query
                 entryCount: 1);
         }
 
-        [ConditionalTheory]
+        [ConditionalTheory(Skip = "issue #15043")]
         [MemberData(nameof(IsAsyncData))]
         public virtual Task Select_collection_navigation_simple(bool isAsync)
         {
@@ -596,7 +596,7 @@ namespace Microsoft.EntityFrameworkCore.Query
                 entryCount: 30);
         }
 
-        [ConditionalTheory]
+        [ConditionalTheory(Skip = "issue #15043")]
         [MemberData(nameof(IsAsyncData))]
         public virtual Task Select_collection_navigation_multi_part(bool isAsync)
         {
@@ -618,7 +618,7 @@ namespace Microsoft.EntityFrameworkCore.Query
                 entryCount: 6);
         }
 
-        [ConditionalTheory(Skip = "issue #12922")]
+        [ConditionalTheory(Skip = "issue #12922, #15043")]
         [MemberData(nameof(IsAsyncData))]
         public virtual Task Select_collection_navigation_multi_part2(bool isAsync)
         {
@@ -1089,7 +1089,7 @@ namespace Microsoft.EntityFrameworkCore.Query
                 entryCount: 352);
         }
 
-        [ConditionalTheory]
+        [ConditionalTheory(Skip = "issue #15260")]
         [MemberData(nameof(IsAsyncData))]
         public virtual Task Where_subquery_on_navigation(bool isAsync)
         {
@@ -1103,7 +1103,7 @@ namespace Microsoft.EntityFrameworkCore.Query
                 entryCount: 1);
         }
 
-        [ConditionalTheory]
+        [ConditionalTheory(Skip = "issue #15260")]
         [MemberData(nameof(IsAsyncData))]
         public virtual Task Where_subquery_on_navigation2(bool isAsync)
         {
@@ -1487,7 +1487,7 @@ namespace Microsoft.EntityFrameworkCore.Query
             }
         }
 
-        [ConditionalFact]
+        [ConditionalFact(Skip = "issue #15064")]
         public virtual void Include_on_inner_projecting_groupjoin_complex()
         {
             using (var ctx = CreateContext())

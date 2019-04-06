@@ -3381,8 +3381,8 @@ FROM [Squads] AS [s]
 WHERE NOT EXISTS (
     SELECT 1
     FROM [Gears] AS [g]
-    LEFT JOIN [Tags] AS [g.Tag] ON ([g].[Nickname] = [g.Tag].[GearNickName]) AND ([g].[SquadId] = [g.Tag].[GearSquadId])
-    WHERE ([g].[Discriminator] IN (N'Officer', N'Gear') AND ([s].[Id] = [g].[SquadId])) AND ([g.Tag].[Note] = N'Dom''s Tag'))");
+    LEFT JOIN [Tags] AS [m.Tag] ON ([g].[Nickname] = [m.Tag].[GearNickName]) AND ([g].[SquadId] = [m.Tag].[GearSquadId])
+    WHERE ([g].[Discriminator] IN (N'Officer', N'Gear') AND ([s].[Id] = [g].[SquadId])) AND ([m.Tag].[Note] = N'Dom''s Tag'))");
         }
 
         public override async Task All_with_optional_navigation_is_translated_to_sql(bool isAsync)

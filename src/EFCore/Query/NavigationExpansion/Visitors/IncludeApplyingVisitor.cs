@@ -36,10 +36,10 @@ namespace Microsoft.EntityFrameworkCore.Query.NavigationExpansion.Visitors
                 foreach (var child in navigationBindingExpression.NavigationTreeNode.Children.Where(n => n.Included == NavigationTreeNodeIncludeMode.ReferencePending || n.Included == NavigationTreeNodeIncludeMode.Collection))
                 {
                     result = CreateIncludeCall(result, child, navigationBindingExpression.RootParameter, navigationBindingExpression.SourceMapping);
-                    if (child.Included == NavigationTreeNodeIncludeMode.ReferencePending)
-                    {
-                        child.Included = NavigationTreeNodeIncludeMode.ReferenceComplete;
-                    }
+                    //if (child.Included == NavigationTreeNodeIncludeMode.ReferencePending)
+                    //{
+                    //    child.Included = NavigationTreeNodeIncludeMode.ReferenceComplete;
+                    //}
                 }
 
                 return result;
@@ -75,10 +75,10 @@ namespace Microsoft.EntityFrameworkCore.Query.NavigationExpansion.Visitors
             var entityType = node.Navigation.GetTargetType();
             var included = (Expression)new NavigationBindingExpression(rootParameter, node, entityType, sourceMapping, entityType.ClrType);
 
-            foreach (var child in node.Children.Where(n => n.Included == NavigationTreeNodeIncludeMode.ReferencePending))
+            foreach (var child in node.Children.Where(n => n.Included == NavigationTreeNodeIncludeMode.ReferencePending || n.Included == NavigationTreeNodeIncludeMode.Collection))
             {
                 included = CreateIncludeCall(included, child, rootParameter, sourceMapping);
-                child.Included = NavigationTreeNodeIncludeMode.ReferenceComplete;
+                //child.Included = NavigationTreeNodeIncludeMode.ReferenceComplete;
             }
 
             return new IncludeExpression(caller, included, node.Navigation);

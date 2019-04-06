@@ -119,7 +119,8 @@ namespace Microsoft.EntityFrameworkCore.Query.NavigationExpansion.Visitors
 
         private Expression RemoveMaterializeCollection(Expression expression)
         {
-            if (expression is NavigationExpansionExpression navigationExpansionExpression)
+            if (expression is NavigationExpansionExpression navigationExpansionExpression
+                && navigationExpansionExpression.State.MaterializeCollectionNavigation != null)
             {
                 navigationExpansionExpression.State.MaterializeCollectionNavigation = null;
 
@@ -129,7 +130,8 @@ namespace Microsoft.EntityFrameworkCore.Query.NavigationExpansion.Visitors
                     navigationExpansionExpression.Operand.Type);
             }
 
-            if (expression is NavigationExpansionRootExpression navigationExpansionRootExpression)
+            if (expression is NavigationExpansionRootExpression navigationExpansionRootExpression
+                && navigationExpansionRootExpression.NavigationExpansion.State.MaterializeCollectionNavigation != null)
             {
                 navigationExpansionRootExpression.NavigationExpansion.State.MaterializeCollectionNavigation = null;
 
@@ -150,116 +152,116 @@ namespace Microsoft.EntityFrameworkCore.Query.NavigationExpansion.Visitors
         //    ? methodCallExpression.Arguments[0]
         //    : expression;
 
-        public static Expression CreateCollectionNavigationExpression(NavigationTreeNode navigationTreeNode, ParameterExpression rootParameter, SourceMapping sourceMapping)
-        {
-            var collectionNavigationElementType = navigationTreeNode.Navigation.ForeignKey.DeclaringEntityType.ClrType;
-            var entityQueryable = (Expression)NullAsyncQueryProvider.Instance.CreateEntityQueryableExpression(collectionNavigationElementType);
+        //public static Expression CreateCollectionNavigationExpression(NavigationTreeNode navigationTreeNode, ParameterExpression rootParameter, SourceMapping sourceMapping)
+        //{
+        //    var collectionNavigationElementType = navigationTreeNode.Navigation.ForeignKey.DeclaringEntityType.ClrType;
+        //    var entityQueryable = (Expression)NullAsyncQueryProvider.Instance.CreateEntityQueryableExpression(collectionNavigationElementType);
 
-            // constantExpression.Value.GetType().GetSequenceType();
-            var entityType = navigationTreeNode.Navigation.ForeignKey.DeclaringEntityType;// _model.FindEntityType(elementType);
+        //    // constantExpression.Value.GetType().GetSequenceType();
+        //    var entityType = navigationTreeNode.Navigation.ForeignKey.DeclaringEntityType;// _model.FindEntityType(elementType);
 
-            var newSourceMapping = new SourceMapping
-            {
-                RootEntityType = entityType,
-            };
+        //    var newSourceMapping = new SourceMapping
+        //    {
+        //        RootEntityType = entityType,
+        //    };
 
-            var navigationTreeRoot = NavigationTreeNode.CreateRoot(newSourceMapping, fromMapping: new List<string>(), optional: false);
+        //    var navigationTreeRoot = NavigationTreeNode.CreateRoot(newSourceMapping, fromMapping: new List<string>(), optional: false);
 
-            // this is needed for cases like: root.Include(r => r.Collection).ThenInclude(c => c.Reference).Select(r => r.Collection)
-            // result should be elements of the collection navigation with their 'Reference' included
-            CopyIncludeInformation(navigationTreeNode, navigationTreeRoot, newSourceMapping);
+        //    // this is needed for cases like: root.Include(r => r.Collection).ThenInclude(c => c.Reference).Select(r => r.Collection)
+        //    // result should be elements of the collection navigation with their 'Reference' included
+        //    CopyIncludeInformation(navigationTreeNode, navigationTreeRoot, newSourceMapping);
 
-            // TODO: this is copied from visit constant on NavigationExpandingVisitor - DRY!!!
-            newSourceMapping.NavigationTree = navigationTreeRoot;
+        //    // TODO: this is copied from visit constant on NavigationExpandingVisitor - DRY!!!
+        //    newSourceMapping.NavigationTree = navigationTreeRoot;
 
-            var pendingSelectorParameter = Expression.Parameter(entityType.ClrType);
-            var pendingSelector = Expression.Lambda(
-                new NavigationBindingExpression(
-                    pendingSelectorParameter,
-                    navigationTreeRoot,
-                    entityType,
-                    newSourceMapping,
-                    pendingSelectorParameter.Type),
-                pendingSelectorParameter);
+        //    var pendingSelectorParameter = Expression.Parameter(entityType.ClrType);
+        //    var pendingSelector = Expression.Lambda(
+        //        new NavigationBindingExpression(
+        //            pendingSelectorParameter,
+        //            navigationTreeRoot,
+        //            entityType,
+        //            newSourceMapping,
+        //            pendingSelectorParameter.Type),
+        //        pendingSelectorParameter);
 
-            entityQueryable = new NavigationExpansionRootExpression(
-                new NavigationExpansionExpression(
-                    entityQueryable,
-                    new NavigationExpansionExpressionState(
-                        pendingSelectorParameter,
-                        new List<SourceMapping> { newSourceMapping },
-                        pendingSelector,
-                        applyPendingSelector: false,
-                        new List<(MethodInfo method, LambdaExpression keySelector)>(),
-                        pendingIncludeChain: null,
-                        pendingCardinalityReducingOperator: null,
-                        new List<List<string>>(),
-                        materializeCollectionNavigation: navigationTreeNode.Navigation
-                        /*new List<NestedExpansionMapping>()*/),
-                    entityQueryable.Type),
-                new List<string>());
+        //    entityQueryable = new NavigationExpansionRootExpression(
+        //        new NavigationExpansionExpression(
+        //            entityQueryable,
+        //            new NavigationExpansionExpressionState(
+        //                pendingSelectorParameter,
+        //                new List<SourceMapping> { newSourceMapping },
+        //                pendingSelector,
+        //                applyPendingSelector: false,
+        //                new List<(MethodInfo method, LambdaExpression keySelector)>(),
+        //                pendingIncludeChain: null,
+        //                pendingCardinalityReducingOperator: null,
+        //                new List<List<string>>(),
+        //                materializeCollectionNavigation: navigationTreeNode.Navigation
+        //                /*new List<NestedExpansionMapping>()*/),
+        //            entityQueryable.Type),
+        //        new List<string>());
 
 
-            //entityQueryable/*var result*/ =
-            //    new CollectionNavigationExpansionRootExpression(
-            //        new NavigationExpansionExpression(
-            //        entityQueryable,
-            //        new NavigationExpansionExpressionState(
-            //            pendingSelectorParameter,
-            //            new List<SourceMapping> { sourceMapping },
-            //            pendingSelector,
-            //            applyPendingSelector: false,
-            //            new List<(MethodInfo method, LambdaExpression keySelector)>(),
-            //            pendingIncludeChain: null,
-            //            pendingCardinalityReducingOperator: null,
-            //            new List<List<string>>(),
-            //            materializeCollectionNavigation: null
-            //            /*new List<NestedExpansionMapping>()*/),
-            //        entityQueryable.Type));
+        //    //entityQueryable/*var result*/ =
+        //    //    new CollectionNavigationExpansionRootExpression(
+        //    //        new NavigationExpansionExpression(
+        //    //        entityQueryable,
+        //    //        new NavigationExpansionExpressionState(
+        //    //            pendingSelectorParameter,
+        //    //            new List<SourceMapping> { sourceMapping },
+        //    //            pendingSelector,
+        //    //            applyPendingSelector: false,
+        //    //            new List<(MethodInfo method, LambdaExpression keySelector)>(),
+        //    //            pendingIncludeChain: null,
+        //    //            pendingCardinalityReducingOperator: null,
+        //    //            new List<List<string>>(),
+        //    //            materializeCollectionNavigation: null
+        //    //            /*new List<NestedExpansionMapping>()*/),
+        //    //        entityQueryable.Type));
 
-            // this doesn't really mean much, maybe add special value to this enum for collections?
-            // we always expand them when we see them in a binding and never during the "regular" expand navigations
-            //navigationTreeNode.ExpansionMode = NavigationTreeNodeExpansionMode.Complete;
-            //navigationBindingExpression.NavigationTreeNode.Parent.Children.Remove(navigationBindingExpression.NavigationTreeNode);
+        //    // this doesn't really mean much, maybe add special value to this enum for collections?
+        //    // we always expand them when we see them in a binding and never during the "regular" expand navigations
+        //    //navigationTreeNode.ExpansionMode = NavigationTreeNodeExpansionMode.Complete;
+        //    //navigationBindingExpression.NavigationTreeNode.Parent.Children.Remove(navigationBindingExpression.NavigationTreeNode);
 
-            //TODO: this could be other things too: EF.Property and maybe field
-            var outerBinding = new NavigationBindingExpression(
-            rootParameter,
-            navigationTreeNode.Parent,
-            //navigationBindingExpression.NavigationTreeNode.Navigation.GetTargetType() ?? navigationBindingExpression.SourceMapping.RootEntityType,
-            navigationTreeNode.Navigation.DeclaringEntityType,
-            sourceMapping,
-            navigationTreeNode.Navigation.DeclaringEntityType.ClrType);
+        //    //TODO: this could be other things too: EF.Property and maybe field
+        //    var outerBinding = new NavigationBindingExpression(
+        //    rootParameter,
+        //    navigationTreeNode.Parent,
+        //    //navigationBindingExpression.NavigationTreeNode.Navigation.GetTargetType() ?? navigationBindingExpression.SourceMapping.RootEntityType,
+        //    navigationTreeNode.Navigation.DeclaringEntityType,
+        //    sourceMapping,
+        //    navigationTreeNode.Navigation.DeclaringEntityType.ClrType);
 
-            var outerKeyAccess = NavigationExpansionHelpers.CreateKeyAccessExpression(
-                outerBinding,
-                navigationTreeNode.Navigation.ForeignKey.PrincipalKey.Properties,
-                addNullCheck: outerBinding.NavigationTreeNode.Optional);
+        //    var outerKeyAccess = NavigationExpansionHelpers.CreateKeyAccessExpression(
+        //        outerBinding,
+        //        navigationTreeNode.Navigation.ForeignKey.PrincipalKey.Properties,
+        //        addNullCheck: outerBinding.NavigationTreeNode.Optional);
 
-            var innerParameter = Expression.Parameter(collectionNavigationElementType, collectionNavigationElementType.GenerateParameterName());
-            var innerKeyAccess = NavigationExpansionHelpers.CreateKeyAccessExpression(
-                innerParameter,
-                navigationTreeNode.Navigation.ForeignKey.Properties);
+        //    var innerParameter = Expression.Parameter(collectionNavigationElementType, collectionNavigationElementType.GenerateParameterName());
+        //    var innerKeyAccess = NavigationExpansionHelpers.CreateKeyAccessExpression(
+        //        innerParameter,
+        //        navigationTreeNode.Navigation.ForeignKey.Properties);
 
-            var predicate = Expression.Lambda(
-                CreateKeyComparisonExpressionForCollectionNavigationSubquery(
-                    outerKeyAccess,
-                    innerKeyAccess,
-                    outerBinding/*,
-                            navigationBindingExpression.RootParameter,
-                            // TODO: this is hacky
-                            navigationBindingExpression.NavigationTreeNode.NavigationChain()*/),
-                innerParameter);
+        //    var predicate = Expression.Lambda(
+        //        CreateKeyComparisonExpressionForCollectionNavigationSubquery(
+        //            outerKeyAccess,
+        //            innerKeyAccess,
+        //            outerBinding/*,
+        //                    navigationBindingExpression.RootParameter,
+        //                    // TODO: this is hacky
+        //                    navigationBindingExpression.NavigationTreeNode.NavigationChain()*/),
+        //        innerParameter);
 
-            //predicate = (LambdaExpression)new NavigationPropertyUnbindingBindingExpressionVisitor(navigationBindingExpression.RootParameter).Visit(predicate);
+        //    //predicate = (LambdaExpression)new NavigationPropertyUnbindingBindingExpressionVisitor(navigationBindingExpression.RootParameter).Visit(predicate);
 
-            var result = Expression.Call(
-                LinqMethodHelpers.QueryableWhereMethodInfo.MakeGenericMethod(collectionNavigationElementType),
-                entityQueryable,
-                predicate);
+        //    var result = Expression.Call(
+        //        LinqMethodHelpers.QueryableWhereMethodInfo.MakeGenericMethod(collectionNavigationElementType),
+        //        entityQueryable,
+        //        predicate);
 
-            return result;
-        }
+        //    return result;
+        //}
 
         public static Expression CreateCollectionNavigationExpression2(NavigationTreeNode navigationTreeNode, ParameterExpression rootParameter, SourceMapping sourceMapping)
         {
@@ -327,36 +329,36 @@ namespace Microsoft.EntityFrameworkCore.Query.NavigationExpansion.Visitors
                     pendingSelectorParameter.Type),
                 pendingSelectorParameter);
 
-            //var result = new NavigationExpansionExpression(
-            //    operand,
-            //    new NavigationExpansionExpressionState(
-            //        pendingSelectorParameter,
-            //        new List<SourceMapping> { newSourceMapping },
-            //        pendingSelector,
-            //        applyPendingSelector: false,
-            //        new List<(MethodInfo method, LambdaExpression keySelector)>(),
-            //        pendingIncludeChain: null,
-            //        pendingCardinalityReducingOperator: null,
-            //        new List<List<string>>(),
-            //        materializeCollectionNavigation: navigationTreeNode.Navigation),
-            //    navigationTreeNode.Navigation.ClrType);
+            var result = new NavigationExpansionExpression(
+                operand,
+                new NavigationExpansionExpressionState(
+                    pendingSelectorParameter,
+                    new List<SourceMapping> { newSourceMapping },
+                    pendingSelector,
+                    applyPendingSelector: false,
+                    new List<(MethodInfo method, LambdaExpression keySelector)>(),
+                    pendingIncludeChain: null,
+                    pendingCardinalityReducingOperator: null,
+                    new List<List<string>>(),
+                    materializeCollectionNavigation: navigationTreeNode.Navigation),
+                navigationTreeNode.Navigation.ClrType);
 
-            var result = new NavigationExpansionRootExpression(
-                new NavigationExpansionExpression(
-                    operand,
-                    new NavigationExpansionExpressionState(
-                        pendingSelectorParameter,
-                        new List<SourceMapping> { newSourceMapping },
-                        pendingSelector,
-                        applyPendingSelector: false,
-                        new List<(MethodInfo method, LambdaExpression keySelector)>(),
-                        pendingIncludeChain: null,
-                        pendingCardinalityReducingOperator: null,
-                        new List<List<string>>(),
-                        materializeCollectionNavigation: navigationTreeNode.Navigation),
-                    navigationTreeNode.Navigation.ClrType),
-                //resultType),
-                new List<string>());
+            //var result = new NavigationExpansionRootExpression(
+            //    new NavigationExpansionExpression(
+            //        operand,
+            //        new NavigationExpansionExpressionState(
+            //            pendingSelectorParameter,
+            //            new List<SourceMapping> { newSourceMapping },
+            //            pendingSelector,
+            //            applyPendingSelector: false,
+            //            new List<(MethodInfo method, LambdaExpression keySelector)>(),
+            //            pendingIncludeChain: null,
+            //            pendingCardinalityReducingOperator: null,
+            //            new List<List<string>>(),
+            //            materializeCollectionNavigation: navigationTreeNode.Navigation),
+            //        navigationTreeNode.Navigation.ClrType),
+            //    //resultType),
+            //    new List<string>());
 
             return result;
         }
