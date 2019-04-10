@@ -92,7 +92,7 @@ namespace Microsoft.EntityFrameworkCore.Storage
                 .CreateQueryModelVisitor()
                 .CreateAsyncQueryExecutor<TResult>(Check.NotNull(queryModel, nameof(queryModel)));
 
-        public Func<QueryContext, TResult> CompileQuery2<TResult>([NotNull] Expression query)
+        public virtual Func<QueryContext, TResult> CompileQuery2<TResult>(Expression query)
         {
             try
             {
