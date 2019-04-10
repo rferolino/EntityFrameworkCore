@@ -152,7 +152,8 @@ namespace Microsoft.EntityFrameworkCore.Relational.Query.Pipeline
                             _dataReader
                                 = relationalCommand.ExecuteReader(
                                     _relationalQueryContext.Connection,
-                                    _relationalQueryContext.ParameterValues);
+                                    _relationalQueryContext.ParameterValues,
+                                    _relationalQueryContext.CommandLogger);
 
                             _hasNext = _dataReader.Read();
                         }

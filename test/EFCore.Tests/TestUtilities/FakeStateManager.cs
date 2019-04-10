@@ -12,7 +12,6 @@ using Microsoft.EntityFrameworkCore.ChangeTracking.Internal;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.EntityFrameworkCore.Internal;
 using Microsoft.EntityFrameworkCore.Metadata;
-using Microsoft.EntityFrameworkCore.Metadata.Internal;
 using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.EntityFrameworkCore.Update;
 
@@ -143,6 +142,11 @@ namespace Microsoft.EntityFrameworkCore.TestUtilities
         public bool SensitiveLoggingEnabled { get; }
         public void CascadeChanges(bool force) => throw new NotImplementedException();
         public void CascadeDelete(InternalEntityEntry entry, bool force) => throw new NotImplementedException();
+
+        public InternalEntityEntry TryGetEntry([NotNull] IKey key, object[] keyValues, bool throwOnNullKey, out bool hasNullKey)
+        {
+            throw new NotImplementedException();
+        }
 
         public IDiagnosticsLogger<DbLoggerCategory.Update> UpdateLogger { get; }
     }

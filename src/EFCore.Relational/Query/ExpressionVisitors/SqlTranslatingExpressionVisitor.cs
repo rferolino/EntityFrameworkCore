@@ -608,40 +608,6 @@ namespace Microsoft.EntityFrameworkCore.Query.ExpressionVisitors
                         ? methodCallExpression.Object
                         : Visit(methodCallExpression.Object);
 
-            if (operand != null
-                || methodCallExpression.Object == null)
-            {
-                var arguments
-                    = methodCallExpression.Arguments
-                        .Where(
-                            e => !(e.RemoveConvert() is QuerySourceReferenceExpression)
-                                 && !IsNonTranslatableSubquery(e.RemoveConvert()))
-                        .Select(
-                            e => (e.RemoveConvert() as ConstantExpression)?.Value is Array || e.RemoveConvert().Type == typeof(DbFunctions)
-                                ? e
-                                : Visit(e))
-                        .Where(e => e != null)
-                        .ToArray();
-
-                if (arguments.Length == methodCallExpression.Arguments.Count)
-                {
-                    var boundExpression
-                        = operand != null
-                            ? Expression.Call(operand, methodCallExpression.Method, arguments)
-                            : Expression.Call(methodCallExpression.Method, arguments);
-
-                    var translatedExpression = _methodCallTranslator.Translate(
-                        boundExpression,
-                        compilationContext.Model,
-                        compilationContext.Logger);
-
-                    if (translatedExpression != null)
-                    {
-                        return translatedExpression;
-                    }
-                }
-            }
-
             if (AnonymousObject.IsGetValueExpression(methodCallExpression, out var querySourceReferenceExpression)
                 || MaterializedAnonymousObject.IsGetValueExpression(methodCallExpression, out querySourceReferenceExpression))
             {

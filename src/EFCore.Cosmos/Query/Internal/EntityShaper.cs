@@ -231,7 +231,7 @@ namespace Microsoft.EntityFrameworkCore.Cosmos.Query.Internal
             {
                 if (trackingQuery)
                 {
-                    var entry = queryContext.StateManager.TryGetEntry(entityInfo.Key, valueBuffer, throwOnNullKey: true);
+                    var entry = queryContext.StateManager.TryGetEntry(entityInfo.Key, new object[] { }, throwOnNullKey: true, out var _);
                     if (entry != null)
                     {
                         return ShapeNestedEntities(

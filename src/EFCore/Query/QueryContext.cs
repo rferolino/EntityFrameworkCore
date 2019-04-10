@@ -87,8 +87,6 @@ namespace Microsoft.EntityFrameworkCore.Query
         public virtual IConcurrencyDetector ConcurrencyDetector
             => Dependencies.ConcurrencyDetector;
 
-        public virtual IDiagnosticsLogger<DbLoggerCategory.Database.Command> CommandLogger => Dependencies.CommandLogger;
-
         /// <summary>
         ///     Gets or sets the cancellation token.
         /// </summary>
@@ -187,7 +185,9 @@ namespace Microsoft.EntityFrameworkCore.Query
             }
         }
 
+#pragma warning disable CS1591 // Missing XML comment for publicly visible type or member
         public virtual void StartTracking(
+#pragma warning restore CS1591 // Missing XML comment for publicly visible type or member
             IEntityType entityType,
             object entity)
         {
