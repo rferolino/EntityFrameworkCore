@@ -185,13 +185,12 @@ namespace Microsoft.EntityFrameworkCore.Query
             }
         }
 
-#pragma warning disable CS1591 // Missing XML comment for publicly visible type or member
         public virtual void StartTracking(
-#pragma warning restore CS1591 // Missing XML comment for publicly visible type or member
             IEntityType entityType,
-            object entity)
+            object entity,
+            ValueBuffer valueBuffer)
         {
-            StateManager.StartTrackingFromQuery(entityType, entity, ValueBuffer.Empty, handledForeignKeys: null);
+            StateManager.StartTrackingFromQuery(entityType, entity, valueBuffer, handledForeignKeys: null);
         }
 
         /// <summary>

@@ -9,6 +9,7 @@ using System.Reflection;
 using Microsoft.EntityFrameworkCore.ChangeTracking.Internal;
 using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.EntityFrameworkCore.Metadata.Internal;
+using Microsoft.EntityFrameworkCore.Query.Internal;
 using Microsoft.EntityFrameworkCore.Storage;
 
 namespace Microsoft.EntityFrameworkCore.Query.Pipeline
@@ -100,7 +101,7 @@ namespace Microsoft.EntityFrameworkCore.Query.Pipeline
                 = typeof(IStateManager).GetTypeInfo().GetDeclaredMethods(nameof(IStateManager.TryGetEntry))
                     .Single(mi => mi.GetParameters().Length == 4);
             private static readonly MethodInfo _startTrackingMethodInfo
-                = typeof(QueryContext).GetMethod(nameof(QueryContext.StartTracking), new[] { typeof(IEntityType), typeof(object) });
+                = typeof(QueryContext).GetMethod(nameof(QueryContext.StartTracking), new[] { typeof(IEntityType), typeof(object), typeof(ValueBuffer) });
 
             private readonly IEntityMaterializerSource _entityMaterializerSource;
             private readonly bool _trackQueryResults;
@@ -167,13 +168,13 @@ namespace Microsoft.EntityFrameworkCore.Query.Pipeline
                                     _tryGetEntryMethodInfo,
                                     Expression.Constant(primaryKey),
                                     Expression.NewArrayInit(
-                                    typeof(object),
-                                    primaryKey.Properties
-                                        .Select(p => _entityMaterializerSource.CreateReadValueExpression(
-                                            entityShaperExpression.ValueBufferExpression,
-                                            typeof(object),
-                                            p.GetIndex(),
-                                            p))),
+                                        typeof(object),
+                                        primaryKey.Properties
+                                            .Select(p => _entityMaterializerSource.CreateReadValueExpression(
+                                                entityShaperExpression.ValueBufferExpression,
+                                                typeof(object),
+                                                p.GetIndex(),
+                                                p))),
                                     Expression.Constant(!entityShaperExpression.Nullable),
                                     hasNullKey)));
 
@@ -207,7 +208,7 @@ namespace Microsoft.EntityFrameworkCore.Query.Pipeline
                                                         p.GetIndex(),
                                                         p),
                                                     Expression.Constant(null)))
-                                                .Aggregate((a,b) => Expression.OrElse(a, b)),
+                                                .Aggregate((a, b) => Expression.OrElse(a, b)),
                                     Expression.Constant(null, entityType.ClrType),
                                     MaterializeEntity(entityType, valueBuffer))));
                     }
@@ -255,31 +256,75 @@ namespace Microsoft.EntityFrameworkCore.Query.Pipeline
                                 _dbContextMemberInfo))));
 
                 var materializationExpression
-                    = (BlockExpression)_entityMaterializerSource.CreateMaterializeExpression(
+                    = _entityMaterializerSource.CreateMaterializeExpression(
                         entityType,
                         "instance" + _currentEntityIndex,
                         materializationContext);
 
-                expressions.AddRange(materializationExpression.Expressions.Take(materializationExpression.Expressions.Count - 1));
-
-                if (_trackQueryResults)
+                if (materializationExpression is BlockExpression blockExpression)
                 {
-                    expressions.Add(
-                        Expression.Call(
-                            QueryCompilationContext2.QueryContextParameter,
-                            _startTrackingMethodInfo,
-                            Expression.Constant(entityType),
-                            materializationExpression.Expressions.Last()));
+                    expressions.AddRange(blockExpression.Expressions.Take(blockExpression.Expressions.Count - 1));
+
+                    if (_trackQueryResults)
+                    {
+                        expressions.Add(
+                            Expression.Call(
+                                QueryCompilationContext2.QueryContextParameter,
+                                _startTrackingMethodInfo,
+                                Expression.Constant(entityType),
+                                blockExpression.Expressions.Last(),
+                                Expression.New(
+                                    typeof(ValueBuffer).GetTypeInfo().DeclaredConstructors.Single(ci => ci.GetParameters().Length == 1),
+                                    Expression.NewArrayInit(
+                                        typeof(object),
+                                        entityType.GetProperties().Where(p => p.IsShadowProperty())
+                                            .Select(p => _entityMaterializerSource.CreateReadValueExpression(
+                                                valueBuffer,
+                                                typeof(object),
+                                                p.GetIndex(),
+                                                p))))));
+                    }
+
+                    expressions.Add(blockExpression.Expressions.Last());
+
+                    return Expression.Block(
+                        entityType.ClrType,
+                        new[] { materializationContext }.Concat(blockExpression.Variables),
+                        expressions);
                 }
+                else
+                {
+                    var instanceVariable = Expression.Variable(materializationExpression.Type, "instance" + _currentEntityIndex);
+                    expressions.Add(Expression.Assign(instanceVariable, materializationExpression));
 
-                expressions.Add(materializationExpression.Expressions.Last());
+                    if (_trackQueryResults)
+                    {
+                        expressions.Add(
+                            Expression.Call(
+                                QueryCompilationContext2.QueryContextParameter,
+                                _startTrackingMethodInfo,
+                                Expression.Constant(entityType),
+                                instanceVariable,
+                                Expression.New(
+                                    typeof(ValueBuffer).GetTypeInfo().DeclaredConstructors.Single(ci => ci.GetParameters().Length == 1),
+                                    Expression.NewArrayInit(
+                                        typeof(object),
+                                        entityType.GetProperties().Where(p => p.IsShadowProperty())
+                                            .Select(p => _entityMaterializerSource.CreateReadValueExpression(
+                                                valueBuffer,
+                                                typeof(object),
+                                                p.GetIndex(),
+                                                p))))));
+                    }
 
-                return Expression.Block(
-                    entityType.ClrType,
-                    new[] { materializationContext }.Concat(materializationExpression.Variables),
-                    expressions);
+                    expressions.Add(instanceVariable);
+
+                    return Expression.Block(
+                        entityType.ClrType,
+                        new[] { materializationContext, instanceVariable },
+                        expressions);
+                }
             }
         }
     }
-
 }
