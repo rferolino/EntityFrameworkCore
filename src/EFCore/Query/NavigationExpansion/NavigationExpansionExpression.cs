@@ -65,7 +65,8 @@ namespace Microsoft.EntityFrameworkCore.Query.NavigationExpansion
 
                 // we can't get body type using lambda.Body.Type because in some cases (SelectMany) we manually set the lambda type (IEnumerable<Entity>) where the body itself is IQueryable
                 // TODO: this might be problem in other places!
-                var pendingSelectorBodyType = pendingSelector.Type.GetGenericArguments()[1];
+                //var pendingSelectorBodyType = pendingSelector.Type.GetGenericArguments()[1];
+                var pendingSelectorBodyType = pendingSelector.Body.Type;
 
                 var pendingSelectMathod = result.Type.IsGenericType && (result.Type.GetGenericTypeDefinition() == typeof(IEnumerable<>) || result.Type.GetGenericTypeDefinition() == typeof(IOrderedEnumerable<>))
                     ? LinqMethodHelpers.EnumerableSelectMethodInfo.MakeGenericMethod(parameter.Type, pendingSelectorBodyType)
@@ -121,7 +122,7 @@ namespace Microsoft.EntityFrameworkCore.Query.NavigationExpansion
                 }
                 else if (_returnType.GetGenericTypeDefinition() == typeof(IIncludableQueryable<,>))
                 {
-                    // TODO: how to handle properly?
+                    // TODO: handle this using adapter, just like we do for order by?
                     return Convert(result, _returnType);
                 }
             }

@@ -20,54 +20,11 @@ namespace Microsoft.EntityFrameworkCore.Query.NavigationExpansion
             => methodCallExpression.Method.DeclaringType == typeof(EntityFrameworkQueryableExtensions)
                 && methodCallExpression.Method.Name == nameof(EntityFrameworkQueryableExtensions.Include);
 
-        //public static LambdaExpression CombineAndRemapLambdas(
-        //    LambdaExpression first,
-        //    LambdaExpression second)
-        //    => CombineAndRemapLambdas(first, second, second.Parameters[0]);
-
-        //public static LambdaExpression CombineAndRemapLambdas(
-        //    LambdaExpression first,
-        //    LambdaExpression second,
-        //    ParameterExpression secondLambdaParameterToReplace)
-        //{
-        //    if (first == null)
-        //    {
-        //        return second;
-        //    }
-
-        //    if (second == null)
-        //    {
-        //        return first;
-        //    }
-
-        //    var lcev = new LambdaCombiningVisitor(first, first.Parameters[0], secondLambdaParameterToReplace);
-
-        //    return (LambdaExpression)lcev.Visit(second);
-        //}
-
         public static Expression CombineAndRemap(
             Expression source,
             ParameterExpression sourceParameter,
             Expression replaceWith)
-        {
-            if (source is LambdaExpression)
-            {
-                throw new InvalidOperationException("gfdgdfgdfgdf");
-            }
-
-            if (replaceWith is LambdaExpression)
-            {
-                throw new InvalidOperationException("gf");
-            }
-
-            var ecv = new ExpressionCombiningVisitor(sourceParameter, replaceWith);
-
-            return ecv.Visit(source);
-            //var lcev = new LambdaCombiningVisitor(first, first.Parameters[0], secondLambdaParameterToReplace);
-
-            //return (LambdaExpression)lcev.Visit(second);
-        }
-
+            => new ExpressionCombiningVisitor(sourceParameter, replaceWith).Visit(source);
 
         public class ExpressionCombiningVisitor : NavigationExpansionVisitorBase
         {
@@ -82,50 +39,10 @@ namespace Microsoft.EntityFrameworkCore.Query.NavigationExpansion
                 _replaceWith = replaceWith;
             }
 
-            //protected override Expression VisitLambda<T>(Expression<T> lambdaExpression)
-            //{
-            //    // TODO: combine this with navigation replacing expression visitor? logic is the same
-            //    var newParameters = new List<ParameterExpression>();
-            //    var parameterChanged = false;
-
-            //    foreach (var parameter in lambdaExpression.Parameters)
-            //    {
-            //        if (parameter == _previousParameter
-            //            && parameter != _newParameter)
-            //        {
-            //            newParameters.Add(_newParameter);
-            //            parameterChanged = true;
-            //        }
-            //        else
-            //        {
-            //            newParameters.Add(parameter);
-            //        }
-            //    }
-
-            //    var newBody = Visit(lambdaExpression.Body);
-
-            //    return parameterChanged || newBody != lambdaExpression.Body
-            //        ? Expression.Lambda(newBody, newParameters)
-            //        : lambdaExpression;
-            //}
-
             protected override Expression VisitParameter(ParameterExpression parameterExpression)
                 => parameterExpression == _sourceParameter
                 ? _replaceWith
                 : base.VisitParameter(parameterExpression);
-            //{
-            //    if (parameterExpression == _sourceParameter)
-            //    {
-            //        return 
-
-            //        var prev = new ParameterReplacingExpressionVisitor(parameterToReplace: _sourceParameter, replaceWith: _replaceWith);
-            //        var result = prev.Visit(parameterExpression);
-
-            //        return result;
-            //    }
-
-            //    return base.VisitParameter(parameterExpression);
-            //}
 
             protected override Expression VisitMember(MemberExpression memberExpression)
             {
@@ -143,51 +60,7 @@ namespace Microsoft.EntityFrameworkCore.Query.NavigationExpansion
                     ? memberExpression.Update(newSource)
                     : memberExpression;
             }
-
-            //private class ParameterReplacingExpressionVisitor : ExpressionVisitor
-            //{
-            //    private ParameterExpression _parameterToReplace;
-            //    private Expression _replaceWith;
-
-            //    public ParameterReplacingExpressionVisitor(ParameterExpression parameterToReplace, Expression replaceWith)
-            //    {
-            //        _parameterToReplace = parameterToReplace;
-            //        _replaceWith = replaceWith;
-            //    }
-
-            //    protected override Expression VisitLambda<T>(Expression<T> lambdaExpression)
-            //    {
-            //        var newBody = Visit(lambdaExpression.Body);
-
-            //        return newBody != lambdaExpression.Body
-            //            ? Expression.Lambda(newBody, lambdaExpression.Parameters)
-            //            : lambdaExpression;
-            //    }
-
-            //    protected override Expression VisitParameter(ParameterExpression parameterExpression)
-            //        => parameterExpression == _parameterToReplace
-            //        ? _replaceWith
-            //        : parameterExpression;
-            //}
         }
     }
 
-    // TODO: temporary hack
-    public static class ParameterNamingExtensions
-    {
-        public static string GenerateParameterName(this Type type)
-        {
-            var sb = new StringBuilder();
-            var removeLowerCase = sb.Append(type.Name.Where(c => char.IsUpper(c)).ToArray()).ToString();
-
-            if (removeLowerCase.Length > 0)
-            {
-                return removeLowerCase.ToLower();
-            }
-            else
-            {
-                return type.Name.ToLower().Substring(0, 1);
-            }
-        }
-    }
 }

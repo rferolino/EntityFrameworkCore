@@ -23,16 +23,10 @@ namespace Microsoft.EntityFrameworkCore.Query.NavigationExpansion
 
         public virtual Expression ExpandNavigations(Expression expression)
         {
-            var i = 0;
-            if (i == 1)
-            {
-                return expression;
-            }
-
             var newExpression = new NavigationExpandingVisitor(_model).Visit(expression);
             newExpression = new NavigationExpansionReducingVisitor().Visit(newExpression);
 
-            // TODO: hack to workaround type discrepancy that can happen sometimes when rerwriting collection navigations
+            // TODO: this can probably be removed once new pipeline is in place
             return newExpression.RemoveConvert();
         }
     }

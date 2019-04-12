@@ -652,6 +652,11 @@ INNER JOIN (
 ORDER BY [t].[Id]");
         }
 
+        public override Task Select_nav_prop_collection_one_to_many_required(bool isAsync)
+        {
+            return base.Select_nav_prop_collection_one_to_many_required(isAsync);
+        }
+
         public override async Task Select_nav_prop_reference_optional1(bool isAsync)
         {
             await base.Select_nav_prop_reference_optional1(isAsync);
