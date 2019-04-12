@@ -62,12 +62,8 @@ namespace Microsoft.EntityFrameworkCore.Query.NavigationExpansion
             if (State.ApplyPendingSelector)
             {
                 var pendingSelector = (LambdaExpression)new NavigationPropertyUnbindingVisitor(State.CurrentParameter).Visit(State.PendingSelector);
-
-                // we can't get body type using lambda.Body.Type because in some cases (SelectMany) we manually set the lambda type (IEnumerable<Entity>) where the body itself is IQueryable
-                // TODO: this might be problem in other places!
-                //var pendingSelectorBodyType = pendingSelector.Type.GetGenericArguments()[1];
-                var pendingSelectorBodyType = pendingSelector.Body.Type;
-
+                var pendingSelectorBodyType = pendingSelector.Type.GetGenericArguments()[1];
+                
                 var pendingSelectMathod = result.Type.IsGenericType && (result.Type.GetGenericTypeDefinition() == typeof(IEnumerable<>) || result.Type.GetGenericTypeDefinition() == typeof(IOrderedEnumerable<>))
                     ? LinqMethodHelpers.EnumerableSelectMethodInfo.MakeGenericMethod(parameter.Type, pendingSelectorBodyType)
                     : LinqMethodHelpers.QueryableSelectMethodInfo.MakeGenericMethod(parameter.Type, pendingSelectorBodyType);

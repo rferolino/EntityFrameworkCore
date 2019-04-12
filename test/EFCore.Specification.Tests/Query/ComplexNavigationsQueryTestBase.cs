@@ -5585,137 +5585,204 @@ namespace Microsoft.EntityFrameworkCore.Query
             }
         }
 
-        [ConditionalFact]
-        public virtual void Include1()
+        [ConditionalTheory]
+        [MemberData(nameof(IsAsyncData))]
+        public virtual Task Include1(bool isAsync)
         {
-            using (var ctx = CreateContext())
-            {
-                var query = ctx.LevelOne.Include(l1 => l1.OneToOne_Optional_FK1);
-                var result = query.ToList();
-            }
+            return AssertIncludeQuery<Level1>(
+                isAsync,
+                l1s => l1s.Include(l1 => l1.OneToOne_Optional_FK1),
+                new List<IExpectedInclude> { new ExpectedInclude<Level1>(l1 => l1.OneToOne_Optional_FK1, "OneToOne_Optional_FK1") });
         }
 
-        [ConditionalFact]
-        public virtual void Include2()
+        [ConditionalTheory]
+        [MemberData(nameof(IsAsyncData))]
+        public virtual Task Include2(bool isAsync)
         {
-            using (var ctx = CreateContext())
-            {
-                var query = ctx.LevelOne.Include(l1 => l1.OneToOne_Optional_FK1).Include(l1 => l1.OneToOne_Optional_FK1);
-                var result = query.ToList();
-            }
+            var expectedIncludes = new List<IExpectedInclude>
+                {
+                    new ExpectedInclude<Level1>(l1 => l1.OneToOne_Optional_FK1, "OneToOne_Optional_FK1"),
+                    new ExpectedInclude<Level1>(l1 => l1.OneToOne_Optional_FK1, "OneToOne_Optional_FK1")
+                };
+
+            return AssertIncludeQuery<Level1>(
+                isAsync,
+                l1s => l1s.Include(l1 => l1.OneToOne_Optional_FK1).Include(l1 => l1.OneToOne_Optional_FK1),
+                expectedIncludes);
         }
 
-        [ConditionalFact]
-        public virtual void Include3()
+        [ConditionalTheory]
+        [MemberData(nameof(IsAsyncData))]
+        public virtual Task Include3(bool isAsync)
         {
-            using (var ctx = CreateContext())
-            {
-                var query = ctx.LevelOne.Include(l1 => l1.OneToOne_Optional_FK1).Include(l1 => l1.OneToOne_Optional_PK1);
-                var result = query.ToList();
-            }
+            var expectedIncludes = new List<IExpectedInclude>
+                {
+                    new ExpectedInclude<Level1>(l1 => l1.OneToOne_Optional_FK1, "OneToOne_Optional_FK1"),
+                    new ExpectedInclude<Level1>(l1 => l1.OneToOne_Optional_PK1, "OneToOne_Optional_PK1")
+                };
+
+            return AssertIncludeQuery<Level1>(
+                isAsync,
+                l1s => l1s.Include(l1 => l1.OneToOne_Optional_FK1).Include(l1 => l1.OneToOne_Optional_PK1),
+                expectedIncludes);
         }
 
-        [ConditionalFact]
-        public virtual void Include4()
+        [ConditionalTheory]
+        [MemberData(nameof(IsAsyncData))]
+        public virtual Task Include4(bool isAsync)
         {
-            using (var ctx = CreateContext())
-            {
-                var query = ctx.LevelOne.Include(l1 => l1.OneToOne_Optional_FK1).ThenInclude(l1 => l1.OneToOne_Optional_PK2);
-                var result = query.ToList();
-            }
-        }
+            var expectedIncludes = new List<IExpectedInclude>
+                {
+                    new ExpectedInclude<Level1>(l1 => l1.OneToOne_Optional_FK1, "OneToOne_Optional_FK1"),
+                    new ExpectedInclude<Level2>(l2 => l2.OneToOne_Optional_PK2, "OneToOne_Optional_PK2", "OneToOne_Optional_FK1")
+                };
 
-        [ConditionalFact]
-        public virtual void Include5()
-        {
-            using (var ctx = CreateContext())
-            {
-                var query = ctx.LevelOne.Include(l1 => l1.OneToOne_Optional_FK1.OneToOne_Optional_PK2);
-                var result = query.ToList();
-            }
-        }
-
-        [ConditionalFact]
-        public virtual void Include6()
-        {
-            using (var ctx = CreateContext())
-            {
-                var query = ctx.LevelOne.Include(l1 => l1.OneToOne_Optional_FK1.OneToOne_Optional_PK2).Select(l1 => l1.OneToOne_Optional_FK1);
-                var result = query.ToList();
-            }
-        }
-
-        [ConditionalFact]
-        public virtual void Include7()
-        {
-            using (var ctx = CreateContext())
-            {
-                var query = ctx.LevelOne.Include(l1 => l1.OneToOne_Optional_FK1.OneToOne_Optional_PK2).Select(l1 => l1.OneToOne_Optional_PK1);
-                var result = query.ToList();
-            }
+            return AssertIncludeQuery<Level1>(
+                isAsync,
+                l1s => l1s.Include(l1 => l1.OneToOne_Optional_FK1).ThenInclude(l1 => l1.OneToOne_Optional_PK2),
+                expectedIncludes);
         }
 
 
-        [ConditionalFact]
-        public virtual void Include8()
+        [ConditionalTheory]
+        [MemberData(nameof(IsAsyncData))]
+        public virtual Task Include5(bool isAsync)
         {
-            using (var ctx = CreateContext())
-            {
-                var query = ctx.LevelTwo.Where(l2 => l2.OneToOne_Optional_FK_Inverse2.Name != "Fubar").Include(l2 => l2.OneToOne_Optional_FK_Inverse2);
-                var result = query.ToList();
-            }
+            var expectedIncludes = new List<IExpectedInclude>
+                {
+                    new ExpectedInclude<Level1>(l1 => l1.OneToOne_Optional_FK1, "OneToOne_Optional_FK1"),
+                    new ExpectedInclude<Level2>(l2 => l2.OneToOne_Optional_PK2, "OneToOne_Optional_PK2", "OneToOne_Optional_FK1")
+                };
+
+            return AssertIncludeQuery<Level1>(
+                isAsync,
+                l1s => l1s.Include(l1 => l1.OneToOne_Optional_FK1.OneToOne_Optional_PK2),
+                expectedIncludes);
         }
 
-        [ConditionalFact]
-        public virtual void Include9()
+        [ConditionalTheory]
+        [MemberData(nameof(IsAsyncData))]
+        public virtual Task Include6(bool isAsync)
         {
-            using (var ctx = CreateContext())
-            {
-                var query = ctx.LevelTwo.Include(l2 => l2.OneToOne_Optional_FK_Inverse2).Where(l2 => l2.OneToOne_Optional_FK_Inverse2.Name != "Fubar");
-                var result = query.ToList();
-            }
+            var expectedIncludes = new List<IExpectedInclude>
+                {
+                    new ExpectedInclude<Level2>(l2 => l2.OneToOne_Optional_PK2, "OneToOne_Optional_PK2")
+                };
+
+            return AssertIncludeQuery<Level1>(
+                isAsync,
+                l1s => l1s.Include(l1 => l1.OneToOne_Optional_FK1.OneToOne_Optional_PK2).Select(l1 => l1.OneToOne_Optional_FK1),
+                expectedIncludes);
         }
 
-        [ConditionalFact]
-        public virtual void Include10()
+        [ConditionalTheory]
+        [MemberData(nameof(IsAsyncData))]
+        public virtual Task Include7(bool isAsync)
         {
-            using (var ctx = CreateContext())
-            {
-                var query = ctx.LevelOne
+            return AssertIncludeQuery<Level1>(
+                isAsync,
+                l1s => l1s.Include(l1 => l1.OneToOne_Optional_FK1.OneToOne_Optional_PK2).Select(l1 => l1.OneToOne_Optional_PK1),
+                new List<IExpectedInclude>());
+        }
+
+        [ConditionalTheory]
+        [MemberData(nameof(IsAsyncData))]
+        public virtual Task Include8(bool isAsync)
+        {
+            var expectedIncludes = new List<IExpectedInclude>
+                {
+                    new ExpectedInclude<Level2>(l2 => l2.OneToOne_Optional_FK_Inverse2, "OneToOne_Optional_FK_Inverse2")
+                };
+
+            return AssertIncludeQuery<Level2>(
+                isAsync,
+                l2s => l2s.Where(l2 => l2.OneToOne_Optional_FK_Inverse2.Name != "Fubar").Include(l2 => l2.OneToOne_Optional_FK_Inverse2),
+                l2s => l2s.Where(l2 => Maybe(l2.OneToOne_Optional_FK_Inverse2, () => l2.OneToOne_Optional_FK_Inverse2.Name) != "Fubar").Include(l2 => l2.OneToOne_Optional_FK_Inverse2),
+                expectedIncludes);
+        }
+
+
+        [ConditionalTheory]
+        [MemberData(nameof(IsAsyncData))]
+        public virtual Task Include9(bool isAsync)
+        {
+            var expectedIncludes = new List<IExpectedInclude>
+                {
+                    new ExpectedInclude<Level2>(l2 => l2.OneToOne_Optional_FK_Inverse2, "OneToOne_Optional_FK_Inverse2")
+                };
+
+            return AssertIncludeQuery<Level2>(
+                isAsync,
+                l2s => l2s.Include(l2 => l2.OneToOne_Optional_FK_Inverse2).Where(l2 => l2.OneToOne_Optional_FK_Inverse2.Name != "Fubar"),
+                l2s => l2s.Include(l2 => l2.OneToOne_Optional_FK_Inverse2).Where(l2 => Maybe(l2.OneToOne_Optional_FK_Inverse2, () => l2.OneToOne_Optional_FK_Inverse2.Name) != "Fubar"),
+                expectedIncludes);
+        }
+
+        [ConditionalTheory]
+        [MemberData(nameof(IsAsyncData))]
+        public virtual Task Include10(bool isAsync)
+        {
+            var expectedIncludes = new List<IExpectedInclude>
+                {
+                    new ExpectedInclude<Level1>(l1 => l1.OneToOne_Optional_FK1, "OneToOne_Optional_FK1"),
+                    new ExpectedInclude<Level2>(l2 => l2.OneToOne_Optional_PK2, "OneToOne_Optional_PK2", "OneToOne_Optional_FK1"),
+                    new ExpectedInclude<Level1>(l1 => l1.OneToOne_Optional_PK1, "OneToOne_Optional_PK1"),
+                    new ExpectedInclude<Level2>(l2 => l2.OneToOne_Optional_FK2, "OneToOne_Optional_FK2", "OneToOne_Optional_PK1"),
+                    new ExpectedInclude<Level3>(l3 => l3.OneToOne_Optional_PK3, "OneToOne_Optional_PK3", "OneToOne_Optional_FK1.OneToOne_Optional_FK2")
+                };
+
+            return AssertIncludeQuery<Level1>(
+                isAsync,
+                l1s => l1s
                     .Include(l1 => l1.OneToOne_Optional_FK1.OneToOne_Optional_PK2)
-                    .Include(l1 => l1.OneToOne_Optional_PK1.OneToOne_Optional_FK2.OneToOne_Optional_PK3);
-
-                var result = query.ToList();
-            }
+                    .Include(l1 => l1.OneToOne_Optional_PK1.OneToOne_Optional_FK2.OneToOne_Optional_PK3),
+                expectedIncludes);
         }
 
-        [ConditionalFact]
-        public virtual void Include11()
+        [ConditionalTheory]
+        [MemberData(nameof(IsAsyncData))]
+        public virtual Task Include11(bool isAsync)
         {
-            using (var ctx = CreateContext())
-            {
-                var query = ctx.LevelOne
+            var expectedIncludes = new List<IExpectedInclude>
+                {
+                    new ExpectedInclude<Level1>(l1 => l1.OneToOne_Optional_FK1, "OneToOne_Optional_FK1"),
+                    new ExpectedInclude<Level2>(l2 => l2.OneToOne_Optional_FK2, "OneToOne_Optional_FK2", "OneToOne_Optional_FK1"),
+                    new ExpectedInclude<Level2>(l2 => l2.OneToOne_Optional_PK2, "OneToOne_Optional_PK2", "OneToOne_Optional_FK1"),
+                    new ExpectedInclude<Level1>(l1 => l1.OneToOne_Optional_PK1, "OneToOne_Optional_PK1"),
+                    new ExpectedInclude<Level2>(l2 => l2.OneToOne_Optional_FK2, "OneToOne_Optional_FK2", "OneToOne_Optional_PK1"),
+                    new ExpectedInclude<Level3>(l3 => l3.OneToOne_Optional_FK3, "OneToOne_Optional_FK3", "OneToOne_Optional_PK1.OneToOne_Optional_FK2"),
+                    new ExpectedInclude<Level1>(l1 => l1.OneToOne_Optional_PK1, "OneToOne_Optional_PK1"),
+                    new ExpectedInclude<Level2>(l2 => l2.OneToOne_Optional_FK2, "OneToOne_Optional_FK2", "OneToOne_Optional_PK1"),
+                    new ExpectedInclude<Level3>(l3 => l3.OneToOne_Optional_PK3, "OneToOne_Optional_PK3", "OneToOne_Optional_PK1.OneToOne_Optional_FK2"),
+                    new ExpectedInclude<Level2>(l2 => l2.OneToOne_Optional_PK2, "OneToOne_Optional_PK2", "OneToOne_Optional_PK1"),
+                };
+
+            return AssertIncludeQuery<Level1>(
+                isAsync,
+                l1s => l1s
                     .Include(l1 => l1.OneToOne_Optional_FK1.OneToOne_Optional_FK2)
                     .Include(l1 => l1.OneToOne_Optional_FK1.OneToOne_Optional_PK2)
                     .Include(l1 => l1.OneToOne_Optional_PK1.OneToOne_Optional_FK2.OneToOne_Optional_FK3)
                     .Include(l1 => l1.OneToOne_Optional_PK1.OneToOne_Optional_FK2.OneToOne_Optional_PK3)
-                    .Include(l1 => l1.OneToOne_Optional_PK1.OneToOne_Optional_PK2);
-
-                var result = query.ToList();
-            }
+                    .Include(l1 => l1.OneToOne_Optional_PK1.OneToOne_Optional_PK2),
+                expectedIncludes);
         }
 
-        [ConditionalFact]
-        public virtual void Include12()
+        [ConditionalTheory]
+        [MemberData(nameof(IsAsyncData))]
+        public virtual Task Include12(bool isAsync)
         {
-            using (var ctx = CreateContext())
-            {
-                var query = ctx.LevelOne
-                    .Include(l1 => l1.OneToOne_Optional_FK1.OneToOne_Optional_FK2)
-                    .Select(l1 => l1.OneToOne_Optional_FK1);
+            var expectedIncludes = new List<IExpectedInclude>
+                {
+                    new ExpectedInclude<Level2>(l2 => l2.OneToOne_Optional_FK2, "OneToOne_Optional_FK2")
+                };
 
-                var result = query.ToList();
-            }
+            return AssertIncludeQuery<Level1>(
+                isAsync,
+                l1s => l1s
+                    .Include(l1 => l1.OneToOne_Optional_FK1.OneToOne_Optional_FK2)
+                    .Select(l1 => l1.OneToOne_Optional_FK1),
+                expectedIncludes);
         }
 
         [ConditionalFact]
