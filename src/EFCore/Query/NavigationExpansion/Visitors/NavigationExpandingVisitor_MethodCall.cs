@@ -324,7 +324,10 @@ namespace Microsoft.EntityFrameworkCore.Query.NavigationExpansion.Visitors
                 }
 
                 var resultSelector = methodCallExpression.Arguments[2].UnwrapQuote();
-                var resultSelectorRemap = RemapTwoArgumentResultSelector(resultSelector, outerState, collectionSelectorNavigationExpansionExpression.State);
+
+                // we need to create a new state for the collection element - in case of GroupJoin - SelectMany case, grouping is also in scope and it's navigations can be expanded independently
+                var innerState = CreateSelectManyInnerState(collectionSelectorNavigationExpansionExpression.State, resultSelector.Parameters[1].Name);
+                var resultSelectorRemap = RemapTwoArgumentResultSelector(resultSelector, outerState, /*collectionSelectorNavigationExpansionExpression.State*/innerState);
 
                 var newMethodInfo = methodCallExpression.Method.GetGenericMethodDefinition().MakeGenericMethod(
                     outerState.CurrentParameter.Type,
@@ -350,6 +353,131 @@ namespace Microsoft.EntityFrameworkCore.Query.NavigationExpansion.Visitors
             }
 
             throw new InvalidOperationException("collection selector was not NavigationExpansionExpression");
+        }
+
+        private NavigationExpansionExpressionState CreateSelectManyInnerState(NavigationExpansionExpressionState collectionSelectorState, string parameterName)
+        {
+            var groupingElementParameter = Expression.Parameter(collectionSelectorState.CurrentParameter.Type, parameterName);
+
+            var groupingSourceMappings = new List<SourceMapping>();
+            var sourceMappingMapping = new Dictionary<SourceMapping, SourceMapping>();
+            var customRootMappingMapping = new Dictionary<List<string>, List<string>>();
+            var navigationTreeNodeMapping = new Dictionary<NavigationTreeNode, NavigationTreeNode>();
+
+            foreach (var customRootMapping in collectionSelectorState.CustomRootMappings)
+            {
+                var newCustomRootMapping = customRootMapping.ToList();
+                customRootMappingMapping[customRootMapping] = newCustomRootMapping;
+            }
+
+            foreach (var oldSourceMapping in collectionSelectorState.SourceMappings)
+            {
+                var newSourceMapping = new SourceMapping
+                {
+                    RootEntityType = oldSourceMapping.RootEntityType,
+                };
+
+                sourceMappingMapping[oldSourceMapping] = newSourceMapping;
+                var newNavigationTreeRoot = NavigationTreeNode.CreateRoot(newSourceMapping, new List<string>(), oldSourceMapping.NavigationTree.Optional);
+
+                // TODO: simply coyping ToMapping might not be correct for very complex cases where the child mapping is not purely Inner/Outer but has some properties from preivous anonymous projections
+                // we should recognize and filter those out, however this is theoretical at this point - scenario is not supported and likely won't be in the foreseeable future
+                newNavigationTreeRoot.ToMapping = oldSourceMapping.NavigationTree.ToMapping.ToList();
+                newSourceMapping.NavigationTree = newNavigationTreeRoot;
+                navigationTreeNodeMapping[oldSourceMapping.NavigationTree] = newNavigationTreeRoot;
+                CopyNavigationTree(oldSourceMapping.NavigationTree, newNavigationTreeRoot, newSourceMapping, ref navigationTreeNodeMapping);
+                groupingSourceMappings.Add(newSourceMapping);
+            }
+
+            var psr = new SelectManyCollectionPendingSelectorRemapper(
+                collectionSelectorState.CurrentParameter,
+                groupingElementParameter,
+                sourceMappingMapping,
+                navigationTreeNodeMapping,
+                customRootMappingMapping);
+
+            var groupingPendingSelectorBody = psr.Visit(collectionSelectorState.PendingSelector.Body);
+
+            var groupingState = new NavigationExpansionExpressionState(
+                groupingElementParameter,
+                groupingSourceMappings,
+                Expression.Lambda(groupingPendingSelectorBody, groupingElementParameter),
+                collectionSelectorState.ApplyPendingSelector,
+                pendingOrderings: new List<(MethodInfo method, LambdaExpression keySelector)>(),
+                pendingIncludeChain: null,
+                pendingCardinalityReducingOperator: null,
+                pendingTags: collectionSelectorState.PendingTags.ToList(),
+                customRootMappings: customRootMappingMapping.Values.ToList(),
+                materializeCollectionNavigation: null);
+
+            collectionSelectorState.PendingTags.Clear();
+
+            return groupingState;
+        }
+
+        private void CopyNavigationTree(
+            NavigationTreeNode originalNavigationTree,
+            NavigationTreeNode newNavigationTree,
+            SourceMapping newSourceMapping,
+            ref Dictionary<NavigationTreeNode, NavigationTreeNode> mapping)
+        {
+            foreach (var child in originalNavigationTree.Children)
+            {
+                var copy = NavigationTreeNode.Create(newSourceMapping, child.Navigation, newNavigationTree, include: false);
+                copy.ExpansionMode = child.ExpansionMode;
+                copy.Included = child.Included;
+
+                // TODO: simply coyping ToMapping might not be correct for very complex cases where the child mapping is not purely Inner/Outer but has some properties from preivous anonymous projections
+                // we should recognize and filter those out, however this is theoretical at this point - scenario is not supported and likely won't be in the foreseeable future
+                copy.ToMapping = child.ToMapping.ToList();
+                mapping[child] = copy;
+                CopyNavigationTree(child, copy, newSourceMapping, ref mapping);
+            }
+        }
+
+        private class SelectManyCollectionPendingSelectorRemapper : ExpressionVisitor
+        {
+            private ParameterExpression _oldParameter;
+            private ParameterExpression _newParameter;
+            private Dictionary<SourceMapping, SourceMapping> _sourceMappingMapping;
+            private Dictionary<NavigationTreeNode, NavigationTreeNode> _navigationTreeNodeMapping;
+            private Dictionary<List<string>, List<string>> _customRootMappingMapping;
+
+            public SelectManyCollectionPendingSelectorRemapper(
+                ParameterExpression oldParameter,
+                ParameterExpression newParameter,
+                Dictionary<SourceMapping, SourceMapping> sourceMappingMapping,
+                Dictionary<NavigationTreeNode, NavigationTreeNode> navigationTreeNodeMapping,
+                Dictionary<List<string>, List<string>> customRootMappingMapping)
+            {
+                _oldParameter = oldParameter;
+                _newParameter = newParameter;
+                _sourceMappingMapping = sourceMappingMapping;
+                _navigationTreeNodeMapping = navigationTreeNodeMapping;
+                _customRootMappingMapping = customRootMappingMapping;
+            }
+
+            protected override Expression VisitExtension(Expression extensionExpression)
+            {
+                if (extensionExpression is NavigationBindingExpression navigationBindingExpression
+                    && navigationBindingExpression.RootParameter == _oldParameter)
+                {
+                    return new NavigationBindingExpression(
+                        _newParameter,
+                        _navigationTreeNodeMapping[navigationBindingExpression.NavigationTreeNode],
+                        navigationBindingExpression.EntityType,
+                        _sourceMappingMapping[navigationBindingExpression.SourceMapping],
+                        navigationBindingExpression.Type);
+                }
+
+                if (extensionExpression is CustomRootExpression customRootExpression
+                    && customRootExpression.RootParameter == _oldParameter)
+                {
+                    return new CustomRootExpression(_newParameter, _customRootMappingMapping[customRootExpression.Mapping], customRootExpression.Type);
+                }
+
+                return base.VisitExtension(extensionExpression);
+            }
         }
 
         private Expression BuildSelectManyWithoutResultOperatorMethodCall(
@@ -734,7 +862,7 @@ namespace Microsoft.EntityFrameworkCore.Query.NavigationExpansion.Visitors
                 var newSelectorBody = unbinder.Visit(applyOrderingsResult.state.PendingSelector.Body);
 
                 var pssmg = new PendingSelectorSourceMappingGenerator(applyOrderingsResult.state.PendingSelector.Parameters[0], null);
-                pssmg.Visit(applyOrderingsResult.state.PendingSelector);
+                pssmg.Visit(applyOrderingsResult.state.PendingSelector.Body);
 
                 var selectorMethodInfo = applyOrderingsResult.source.Type.IsQueryableType()
                     ? LinqMethodHelpers.QueryableSelectMethodInfo
@@ -900,7 +1028,6 @@ namespace Microsoft.EntityFrameworkCore.Query.NavigationExpansion.Visitors
             Expression remappedIncludeLambdaBody;
             if (methodCallExpression.Method.Name == "Include")
             {
-                //remappedIncludeLambdaBody = ExpressionExtensions.CombineAndRemapLambdas(applyOrderingsResult.state.PendingSelector, includeLambda).Body;
                 remappedIncludeLambdaBody = ExpressionExtensions.CombineAndRemap(includeLambda.Body, includeLambda.Parameters[0], applyOrderingsResult.state.PendingSelector.Body);
             }
             else
@@ -1222,7 +1349,7 @@ namespace Microsoft.EntityFrameworkCore.Query.NavigationExpansion.Visitors
                 applyPendingSelector: true,
                 new List<(MethodInfo method, LambdaExpression keySelector)>(),
                 pendingIncludeChain: null,
-                pendingCardinalityReducingOperator: null, // TODO: incorrect?
+                pendingCardinalityReducingOperator: null,
                 outerState.PendingTags.Concat(innerState.PendingTags).ToList(),
                 outerState.CustomRootMappings.Concat(innerState.CustomRootMappings).ToList(),
                 materializeCollectionNavigation: null);
@@ -1252,22 +1379,29 @@ namespace Microsoft.EntityFrameworkCore.Query.NavigationExpansion.Visitors
                 _entityTypeOverride = entityTypeOverride;
             }
 
-            // prune these nodes, we only want to look for entities accessible in the result
-            protected override Expression VisitMember(MemberExpression memberExpression)
-                => memberExpression;
+            protected override Expression VisitMember(MemberExpression memberExpression) => memberExpression;
+            protected override Expression VisitInvocation(InvocationExpression invocationExpression) => invocationExpression;
+            protected override Expression VisitLambda<T>(Expression<T> lambdaExpression) => lambdaExpression;
+            protected override Expression VisitTypeBinary(TypeBinaryExpression typeBinaryExpression) => typeBinaryExpression;
 
             protected override Expression VisitMethodCall(MethodCallExpression methodCallExpression)
-                => methodCallExpression;
+                => methodCallExpression.Method.IsEFPropertyMethod()
+                ? methodCallExpression
+                : base.VisitMethodCall(methodCallExpression);
 
-            // TODO: coalesce should pass? - TEST!
-            protected override Expression VisitBinary(BinaryExpression binaryExpression)
-                => binaryExpression;
-
-            protected override Expression VisitUnary(UnaryExpression unaryExpression)
+            protected override Expression VisitConditional(ConditionalExpression conditionalExpression)
             {
-                // TODO: handle cast here?
+                Visit(conditionalExpression.IfTrue);
+                Visit(conditionalExpression.IfFalse);
 
-                return base.VisitUnary(unaryExpression);
+                return conditionalExpression;
+            }
+
+            protected override Expression VisitBinary(BinaryExpression binaryExpression)
+            {
+                return binaryExpression.NodeType == ExpressionType.Coalesce
+                    ? base.VisitBinary(binaryExpression)
+                    : binaryExpression;
             }
 
             protected override Expression VisitNew(NewExpression newExpression)
@@ -1310,7 +1444,6 @@ namespace Microsoft.EntityFrameworkCore.Query.NavigationExpansion.Visitors
                     return extensionExpression;
                 }
 
-                // TODO: is this correct or some processing is needed here?
                 if (extensionExpression is CustomRootExpression customRootExpression)
                 {
                     return customRootExpression;

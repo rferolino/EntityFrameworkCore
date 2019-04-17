@@ -652,11 +652,6 @@ INNER JOIN (
 ORDER BY [t].[Id]");
         }
 
-        public override Task Select_nav_prop_collection_one_to_many_required(bool isAsync)
-        {
-            return base.Select_nav_prop_collection_one_to_many_required(isAsync);
-        }
-
         public override async Task Select_nav_prop_reference_optional1(bool isAsync)
         {
             await base.Select_nav_prop_reference_optional1(isAsync);
@@ -4559,6 +4554,38 @@ LEFT JOIN [LevelTwo] AS [join.OneToOne_Optional_FK1] ON [l1].[Id] = [join.OneToO
         public override void GroupJoin_with_navigations_in_the_result_selector()
         {
             base.GroupJoin_with_navigations_in_the_result_selector();
+
+            AssertSql(
+                @"");
+        }
+
+        public override void GroupJoin_with_grouping_composed_on1()
+        {
+            base.GroupJoin_with_grouping_composed_on1();
+
+            AssertSql(
+                @"");
+        }
+
+        public override void GroupJoin_with_grouping_composed_on2()
+        {
+            base.GroupJoin_with_grouping_composed_on2();
+
+            AssertSql(
+                @"");
+        }
+
+        public override void GroupJoin_with_grouping_composed_on3()
+        {
+            base.GroupJoin_with_grouping_composed_on3();
+
+            AssertSql(
+                @"");
+        }
+
+        public override void GroupJoin_with_grouping_composed_on4()
+        {
+            base.GroupJoin_with_grouping_composed_on4();
 
             AssertSql(
                 @"");

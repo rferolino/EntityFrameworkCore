@@ -978,18 +978,6 @@ namespace Microsoft.EntityFrameworkCore.Query
                     () => c.Orders.OrderBy(o => o.OrderID).FirstOrDefault().OrderDetails.OrderBy(od => od.ProductID).FirstOrDefault().ProductID)));
         }
 
-
-        //[ConditionalFact]
-        //public virtual void Multiple_collection_navigation_with_FirstOrDefault_chained()
-        //{
-        //    using (var ctx = CreateContext())
-        //    {
-        //        var query = ctx.Customers.OrderBy(c => c.CustomerID).Select(c => (int?)c.Orders.OrderBy(o => o.OrderID).FirstOrDefault().OrderDetails.OrderBy(od => od.ProductID).FirstOrDefault());
-
-        //        var result = query.ToList();
-        //    }
-        //}
-
         [ConditionalTheory(Skip = "Issue #14935. Cannot eval 'First()'")]
         [MemberData(nameof(IsAsyncData))]
         public virtual Task First_inside_subquery_gets_client_evaluated(bool isAsync)

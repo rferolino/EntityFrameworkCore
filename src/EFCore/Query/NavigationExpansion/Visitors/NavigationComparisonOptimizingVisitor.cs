@@ -8,7 +8,7 @@ using Microsoft.EntityFrameworkCore.Internal;
 
 namespace Microsoft.EntityFrameworkCore.Query.NavigationExpansion.Visitors
 {
-    public class NavigationComparisonOptimizingVisitor : NavigationExpansionVisitorBase
+    public class NavigationComparisonOptimizingVisitor : ExpressionVisitor
     {
         private static readonly MethodInfo _objectEqualsMethodInfo
             = typeof(object).GetRuntimeMethod(nameof(object.Equals), new[] { typeof(object), typeof(object) });

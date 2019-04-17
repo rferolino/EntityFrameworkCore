@@ -8,7 +8,6 @@ using System.Linq;
 using System.Linq.Expressions;
 using Microsoft.EntityFrameworkCore.Extensions.Internal;
 using Microsoft.EntityFrameworkCore.Metadata;
-using Microsoft.EntityFrameworkCore.Query.Expressions.Internal;
 using Microsoft.EntityFrameworkCore.Query.Internal;
 
 namespace Microsoft.EntityFrameworkCore.Query.NavigationExpansion.Visitors
@@ -189,10 +188,10 @@ namespace Microsoft.EntityFrameworkCore.Query.NavigationExpansion.Visitors
 
         protected override Expression VisitExtension(Expression extensionExpression)
         {
-            if (extensionExpression is NavigationBindingExpression navigationBindingExpression
-                && navigationBindingExpression.RootParameter == _sourceParameter)
+            if (extensionExpression is NavigationBindingExpression navigationBindingExpression)
             {
-                if (navigationBindingExpression.NavigationTreeNode.Parent != null
+                if (navigationBindingExpression.RootParameter == _sourceParameter
+                    && navigationBindingExpression.NavigationTreeNode.Parent != null
                     && navigationBindingExpression.NavigationTreeNode.Navigation is INavigation lastNavigation
                     && lastNavigation.IsCollection())
                 {
@@ -200,41 +199,13 @@ namespace Microsoft.EntityFrameworkCore.Query.NavigationExpansion.Visitors
 
                     return result;
                 }
-            }
-
-            if (extensionExpression is CorrelationPredicateExpression correlationPredicateExpression)
-            {
-                var newOuterKeyNullCheck = Visit(correlationPredicateExpression.OuterKeyNullCheck);
-                var newEqualExpression = (BinaryExpression)Visit(correlationPredicateExpression.EqualExpression);
-
-                if (newOuterKeyNullCheck != correlationPredicateExpression.OuterKeyNullCheck
-                    || newEqualExpression != correlationPredicateExpression.EqualExpression)
+                else
                 {
-                    return new CorrelationPredicateExpression(newOuterKeyNullCheck, newEqualExpression);
+                    return extensionExpression;
                 }
             }
 
-            if (extensionExpression is NavigationExpansionExpression navigationExpansionExpression)
-            {
-                var newOperand = Visit(navigationExpansionExpression.Operand);
-                if (newOperand != navigationExpansionExpression.Operand)
-                {
-                    return new NavigationExpansionExpression(newOperand, navigationExpansionExpression.State, navigationExpansionExpression.Type);
-                }
-            }
-
-            if (extensionExpression is NullConditionalExpression nullConditionalExpression)
-            {
-                var newCaller = Visit(nullConditionalExpression.Caller);
-                var newAccessOperation = Visit(nullConditionalExpression.AccessOperation);
-
-                return newCaller != nullConditionalExpression.Caller
-                    || newAccessOperation != nullConditionalExpression.AccessOperation
-                    ? new NullConditionalExpression(newCaller, newAccessOperation)
-                    : nullConditionalExpression;
-            }
-
-            return extensionExpression;
+            return base.VisitExtension(extensionExpression);
         }
 
         protected override Expression VisitMember(MemberExpression memberExpression)

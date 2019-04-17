@@ -37,6 +37,18 @@ namespace Microsoft.EntityFrameworkCore.Query.NavigationExpansion
             return new NavigationExpansionExpression(newOperand, NavigationExpansion.State, NavigationExpansion.Type);
         }
 
+        protected override Expression VisitChildren(ExpressionVisitor visitor)
+        {
+            var newNavigationExpansion = (NavigationExpansionExpression)visitor.Visit(NavigationExpansion);
+
+            return Update(newNavigationExpansion);
+        }
+
+        public virtual NavigationExpansionRootExpression Update(NavigationExpansionExpression navigationExpansion)
+            => navigationExpansion != NavigationExpansion
+            ? new NavigationExpansionRootExpression(navigationExpansion, Mapping)
+            : this;
+
         public virtual void Print(ExpressionPrinter expressionPrinter)
         {
             expressionPrinter.StringBuilder.Append("EXPANSION_ROOT([" + Type.ShortDisplayName() + "] | ");

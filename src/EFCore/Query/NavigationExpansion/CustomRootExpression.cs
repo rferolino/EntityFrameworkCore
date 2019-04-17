@@ -25,6 +25,18 @@ namespace Microsoft.EntityFrameworkCore.Query.NavigationExpansion
             Type = type;
         }
 
+        protected override Expression VisitChildren(ExpressionVisitor visitor)
+        {
+            var newRootParameter = (ParameterExpression)visitor.Visit(RootParameter);
+
+            return Update(newRootParameter);
+        }
+
+        public virtual CustomRootExpression Update(ParameterExpression rootParameter)
+            => rootParameter != RootParameter
+            ? new CustomRootExpression(rootParameter, Mapping, Type)
+            : this;
+
         public virtual void Print(ExpressionPrinter expressionPrinter)
         {
             expressionPrinter.StringBuilder.Append("CUSTOM_ROOT([" + Type.ShortDisplayName() + "] | ");

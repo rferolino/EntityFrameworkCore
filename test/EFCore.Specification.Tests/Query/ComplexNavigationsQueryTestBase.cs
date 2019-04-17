@@ -5556,8 +5556,6 @@ namespace Microsoft.EntityFrameworkCore.Query
         [MemberData(nameof(IsAsyncData))]
         public virtual Task Multiple_SelectMany_navigation_property_followed_by_select_collection_navigation(bool isAsync)
         {
-            isAsync = false;
-
             return AssertQuery<Level1>(
                 isAsync,
                 l1s => l1s.SelectMany(l1 => l1.OneToMany_Optional1).SelectMany(l2 => l2.OneToMany_Optional2)
@@ -6155,6 +6153,63 @@ namespace Microsoft.EntityFrameworkCore.Query
             using (var ctx = CreateContext())
             {
                 var query = ctx.LevelOne.GroupJoin(ctx.LevelTwo, l1 => l1.Id, l2 => l2.Level1_Required_Id, (o, i) => new { o.OneToOne_Optional_FK1, i });
+                var result = query.ToList();
+            }
+        }
+
+        [ConditionalFact(Skip = "issue #15412")]
+        public virtual void GroupJoin_with_grouping_composed_on1()
+        {
+            using (var ctx = CreateContext())
+            {
+                var query = from l1 in ctx.LevelOne
+                            join l2 in ctx.LevelTwo.Where(x => x.OneToOne_Optional_FK2.Name != "Foo") on l1.Id equals l2.Level1_Optional_Id into grouping
+                            from l2 in grouping.DefaultIfEmpty()
+                            select new { l1, l2, grouping };
+
+                var result = query.ToList();
+            }
+        }
+
+        [ConditionalFact(Skip = "issue #15412")]
+        public virtual void GroupJoin_with_grouping_composed_on2()
+        {
+            using (var ctx = CreateContext())
+            {
+                var query = from l1 in ctx.LevelOne
+                            join l2 in ctx.LevelTwo.Where(x => x.OneToOne_Optional_FK2.Name != "Foo") on l1.Id equals l2.Level1_Optional_Id into grouping
+                            from l2 in grouping.DefaultIfEmpty()
+                            select new { l1, l2, grouping = grouping.Select(x => x.OneToOne_Optional_FK2.OneToOne_Required_FK3.Name) };
+
+                var result = query.ToList();
+            }
+        }
+
+        [ConditionalFact(Skip = "issue #15412")]
+        public virtual void GroupJoin_with_grouping_composed_on3()
+        {
+            using (var ctx = CreateContext())
+            {
+                var query = from l1 in ctx.LevelOne
+                            join l2 in ctx.LevelTwo.Where(x => x.OneToOne_Optional_FK2.Name != "Foo") on l1.Id equals l2.Level1_Optional_Id into grouping
+                            from l2 in grouping.DefaultIfEmpty()
+                            select new { l1, l2.OneToOne_Required_FK2, grouping };
+
+                var result = query.ToList();
+            }
+        }
+
+        [ConditionalFact(Skip = "issue #15412")]
+        public virtual void GroupJoin_with_grouping_composed_on4()
+        {
+            using (var ctx = CreateContext())
+            {
+                // TODO: this is broken - when we add navigation for OneToOne_Required_FK2 we don't remap source of the grouping correctly since we already removed the binding
+                var query = from l1 in ctx.LevelOne
+                            join l2 in ctx.LevelTwo.Where(x => x.OneToOne_Optional_FK2.Name != "Foo") on l1.Id equals l2.Level1_Optional_Id into grouping
+                            from l2 in grouping.DefaultIfEmpty()
+                            select new { l1, l2.OneToOne_Required_FK2, grouping = grouping.Select(x => x.OneToOne_Required_PK2.Name) };
+
                 var result = query.ToList();
             }
         }

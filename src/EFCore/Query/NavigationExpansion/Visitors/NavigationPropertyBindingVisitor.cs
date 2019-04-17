@@ -9,7 +9,7 @@ using Microsoft.EntityFrameworkCore.Query.Expressions.Internal;
 
 namespace Microsoft.EntityFrameworkCore.Query.NavigationExpansion.Visitors
 {
-    class NavigationPropertyBindingVisitor : NavigationExpansionVisitorBase
+    public class NavigationPropertyBindingVisitor : ExpressionVisitor
     {
         private ParameterExpression _rootParameter;
         private List<SourceMapping> _sourceMappings;

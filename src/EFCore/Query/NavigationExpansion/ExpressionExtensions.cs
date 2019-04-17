@@ -38,7 +38,7 @@ namespace Microsoft.EntityFrameworkCore.Query.NavigationExpansion
             Expression replaceWith)
             => new ExpressionCombiningVisitor(sourceParameter, replaceWith).Visit(source);
 
-        public class ExpressionCombiningVisitor : NavigationExpansionVisitorBase
+        public class ExpressionCombiningVisitor : ExpressionVisitor
         {
             private ParameterExpression _sourceParameter;
             private Expression _replaceWith;

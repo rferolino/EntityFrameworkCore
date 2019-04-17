@@ -27,6 +27,19 @@ namespace Microsoft.EntityFrameworkCore.Query.NavigationExpansion
         public override bool CanReduce => false;
         public override Type Type { get; }
 
+        protected override Expression VisitChildren(ExpressionVisitor visitor)
+        {
+            var newEntityExpression = visitor.Visit(EntityExpression);
+            var newNavigationExpression = visitor.Visit(NavigationExpression);
+
+            return Update(newEntityExpression, newNavigationExpression);
+        }
+
+        public virtual IncludeExpression Update(Expression entityExpression, Expression navigationExpression)
+            => entityExpression != EntityExpression || navigationExpression != NavigationExpression
+            ? new IncludeExpression(entityExpression, navigationExpression, Navigation)
+            : this;
+
         public virtual void Print(ExpressionPrinter expressionPrinter)
         {
             expressionPrinter.StringBuilder.AppendLine("Include(");

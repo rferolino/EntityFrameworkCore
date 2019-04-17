@@ -5,7 +5,7 @@ using System.Linq.Expressions;
 
 namespace Microsoft.EntityFrameworkCore.Query.NavigationExpansion.Visitors
 {
-    class NavigationPropertyUnbindingVisitor : NavigationExpansionVisitorBase
+    public class NavigationPropertyUnbindingVisitor : ExpressionVisitor
     {
         private ParameterExpression _rootParameter;
 
@@ -36,25 +36,13 @@ namespace Microsoft.EntityFrameworkCore.Query.NavigationExpansion.Visitors
                     : result;
             }
 
-            if (extensionExpression is NavigationExpansionRootExpression navigationExpansionRootExpression)
+            if (extensionExpression is NavigationExpansionRootExpression
+                || extensionExpression is NavigationExpansionExpression
+                || extensionExpression is IncludeExpression)
             {
-                var result = navigationExpansionRootExpression.Unwrap();
+                var result = new NavigationExpansionReducingVisitor().Visit(extensionExpression);
 
-                return new NavigationExpansionReducingVisitor().Visit(result);
-            }
-
-            if (extensionExpression is NavigationExpansionExpression navigationExpansionExpression)
-            {
-                var result = new NavigationExpansionReducingVisitor().Visit(navigationExpansionExpression);
-
-                return result;
-            }
-
-            if (extensionExpression is IncludeExpression includeExpression)
-            {
-                var result = new NavigationExpansionReducingVisitor().Visit(includeExpression);
-
-                return result;
+                return Visit(result);
             }
 
             return base.VisitExtension(extensionExpression);

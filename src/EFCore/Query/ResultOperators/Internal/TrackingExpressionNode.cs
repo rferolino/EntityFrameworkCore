@@ -4,6 +4,7 @@
 using System.Collections.Generic;
 using System.Linq.Expressions;
 using System.Reflection;
+using Microsoft.EntityFrameworkCore.Query.NavigationExpansion.Visitors;
 using Remotion.Linq.Clauses;
 using Remotion.Linq.Parsing.Structure.IntermediateModel;
 
@@ -15,17 +16,13 @@ namespace Microsoft.EntityFrameworkCore.Query.ResultOperators.Internal
     /// </summary>
     public class ToOrderedEnumerableExpressionNode : ResultOperatorExpressionNodeBase
     {
-        private static readonly MethodInfo _toOrderedMethodInfo
-            = typeof(NavigationExpansion.NavigationExpansionExpression)
-                .GetTypeInfo().GetDeclaredMethod(nameof(NavigationExpansion.NavigationExpansionExpression.ToOrderedEnumerable));
-
         /// <summary>
         ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
         ///     directly from your code. This API may change or be removed in future releases.
         /// </summary>
         public static readonly IReadOnlyCollection<MethodInfo> SupportedMethods = new[]
         {
-            _toOrderedMethodInfo
+            NavigationExpansionReducingVisitor.ToOrderedEnumerableMethod
         };
 
         /// <summary>
@@ -61,17 +58,13 @@ namespace Microsoft.EntityFrameworkCore.Query.ResultOperators.Internal
     /// </summary>
     public class ToOrderedQueryableExpressionNode : ResultOperatorExpressionNodeBase
     {
-        private static readonly MethodInfo _toOrderedMethodInfo
-            = typeof(NavigationExpansion.NavigationExpansionExpression)
-                .GetTypeInfo().GetDeclaredMethod(nameof(NavigationExpansion.NavigationExpansionExpression.ToOrderedQueryable));
-
         /// <summary>
         ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
         ///     directly from your code. This API may change or be removed in future releases.
         /// </summary>
         public static readonly IReadOnlyCollection<MethodInfo> SupportedMethods = new[]
         {
-            _toOrderedMethodInfo
+            NavigationExpansionReducingVisitor.ToOrderedQueryableMethod
         };
 
         /// <summary>

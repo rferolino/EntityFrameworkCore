@@ -6,7 +6,7 @@ using System.Linq.Expressions;
 
 namespace Microsoft.EntityFrameworkCore.Query.NavigationExpansion.Visitors
 {
-    public class ExpressionReplacingVisitor : NavigationExpansionVisitorBase
+    public class ExpressionReplacingVisitor : ExpressionVisitor
     {
         private Expression _searchedFor;
         private Expression _replaceWith;

@@ -9,7 +9,6 @@ using Microsoft.EntityFrameworkCore.Query.Internal;
 using Microsoft.EntityFrameworkCore.Utilities;
 
 namespace Microsoft.EntityFrameworkCore.Query.NavigationExpansion
-
 {
     public class CorrelationPredicateExpression : Expression, IPrintable
     {
@@ -42,28 +41,15 @@ namespace Microsoft.EntityFrameworkCore.Query.NavigationExpansion
         protected override Expression VisitChildren(ExpressionVisitor visitor)
         {
             var newNullCheck = visitor.Visit(OuterKeyNullCheck);
-            var newLeft = visitor.Visit(EqualExpression.Left);
-            var newRight = visitor.Visit(EqualExpression.Right);
+            var newEqualExpression = (BinaryExpression)visitor.Visit(EqualExpression);
 
-            if (newLeft.Type != newRight.Type
-                && newLeft.Type.UnwrapNullableType() == newRight.Type.UnwrapNullableType())
-            {
-                if (!newLeft.Type.IsNullableType())
-                {
-                    newLeft = Convert(newLeft, newRight.Type);
-                }
-                else
-                {
-                    newRight = Convert(newRight, newLeft.Type);
-                }
-            }
-
-            return newNullCheck != OuterKeyNullCheck
-                   || EqualExpression.Left != newLeft
-                   || EqualExpression.Right != newRight
-                ? new CorrelationPredicateExpression(newNullCheck, Equal(newLeft, newRight))
-                : this;
+            return Update(newNullCheck, newEqualExpression);
         }
+
+        public virtual CorrelationPredicateExpression Update(Expression outerKeyNullCheck, BinaryExpression equalExpression)
+            => outerKeyNullCheck != OuterKeyNullCheck || equalExpression != EqualExpression
+            ? new CorrelationPredicateExpression(outerKeyNullCheck, equalExpression)
+            : this;
 
         /// <summary>
         ///     This API supports the Entity Framework Core infrastructure and is not intended to be used

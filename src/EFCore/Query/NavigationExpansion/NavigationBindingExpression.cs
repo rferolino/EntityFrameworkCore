@@ -36,6 +36,18 @@ namespace Microsoft.EntityFrameworkCore.Query.NavigationExpansion
         public override bool CanReduce => false;
         public override Type Type { get; }
 
+        protected override Expression VisitChildren(ExpressionVisitor visitor)
+        {
+            var newRootParameter = (ParameterExpression)visitor.Visit(RootParameter);
+
+            return Update(newRootParameter);
+        }
+
+        public virtual NavigationBindingExpression Update(ParameterExpression rootParameter)
+            => rootParameter != RootParameter
+            ? new NavigationBindingExpression(rootParameter, NavigationTreeNode, EntityType, SourceMapping, Type)
+            : this;
+
         public virtual void Print(ExpressionPrinter expressionPrinter)
         {
             expressionPrinter.StringBuilder.Append("BINDING([" + EntityType.ClrType.ShortDisplayName() + "] | from: ");
